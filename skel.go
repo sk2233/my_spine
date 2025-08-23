@@ -41,7 +41,9 @@ type Attachment struct {
 	Weight         bool              `json:"weight"`
 	Vertices       []mgl32.Vec2      `json:"vertices"`
 	WeightVertices [][]*WeightVertex `json:"weight_vertices"`
-	CurrVertices   []mgl32.Vec2      `json:"-"`
+	// ATTACHMENT_CLIPPING 会复用上面的 vertices
+	EndSlot      int          `json:"end_slot"` // 作用范围 从所在 slot 到 end_slot 两头都包含
+	CurrVertices []mgl32.Vec2 `json:"-"`
 }
 
 const (

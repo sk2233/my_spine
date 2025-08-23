@@ -8,6 +8,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"image"
+	"image/color"
 	"image/draw"
 	"image/png"
 	"math"
@@ -118,6 +119,7 @@ func (g *Game) Update() error {
 	// 更新数据
 	g.AnimController.Update()
 	g.BoneRoot.Bone.Pos = g.Pos
+	g.BoneRoot.Bone.Scale = mgl32.Vec2{0.5, 0.5}
 	g.BoneRoot.Update()
 	sort.Slice(g.OrderSlots, func(i, j int) bool {
 		return g.OrderSlots[i].Slot.Order < g.OrderSlots[j].Slot.Order
@@ -189,6 +191,16 @@ func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
 			}
 		}
 		indices = attachment.VertexIndex
+	} else if drawData.Attachment.AttachmentType == AttachmentClip {
+		attachment := drawData.Attachment // TODO 剪切蒙版实现
+		mat3 := g.Skel.Bones[slot.BoneIndex].Mat3
+		for _, item := range attachment.CurrVertices {
+			vec := mat3.Mul3x1(item.Vec3(1)).Vec2()
+			vertices = append(vertices, NewVertex(vec.X(), vec.Y(), 0, 0))
+		}
+		for i := 2; i < len(vertices); i++ {
+			indices = append(indices, 0, uint16(i-1), uint16(i))
+		}
 	} else {
 		panic("unknown attachment type")
 	}
@@ -261,14 +273,43 @@ func rotate90(img *ebiten.Image) *ebiten.Image {
 	return res
 }
 
+func rotate270(img *ebiten.Image) *ebiten.Image {
+	// 獲取原始圖片的邊界
+	bound := img.Bounds()
+	width, height := bound.Dx(), bound.Dy()
+	// 創建一個新的圖像，旋轉後寬高互換
+	newImg := ebiten.NewImage(height, width)
+	// 遍歷每個像素點，按照270度旋轉的規則重新排列
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			// 270度旋轉的坐標映射: (x, y) -> (y, width-1-x)
+			newImg.Set(y, width-1-x, img.At(x, y))
+		}
+	}
+	return newImg
+}
+
+var (
+	EmptyImage = ebiten.NewImage(1, 1)
+)
+
+func init() {
+	EmptyImage.Fill(color.White)
+}
+
 func (g *Game) getImage(path string) *ebiten.Image {
+	if path == "" {
+		return EmptyImage
+	}
 	for _, item := range g.Atlas.Items {
 		if item.Name == path {
 			res := ebiten.NewImage(item.OrigW, item.OrigH)
 			draw.Draw(res, image.Rect(item.OrigX, item.OrigY, item.OrigX+item.W, item.OrigY+item.H),
 				g.Image, image.Pt(item.X, item.Y), draw.Over)
-			if item.Rotate {
+			if item.Rotate == 90 {
 				res = rotate90(res)
+			} else if item.Rotate == 270 {
+				res = rotate270(res)
 			}
 			return res
 		}

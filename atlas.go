@@ -9,7 +9,7 @@ import (
 
 type AtlasItem struct {
 	Name         string
-	Rotate       bool
+	Rotate       int
 	X, Y         int
 	W, H         int
 	OrigW, OrigH int
@@ -77,11 +77,11 @@ func parseAtlasItems(items []string) []*AtlasItem {
 }
 
 func parseAtlasItem(items []string) *AtlasItem {
-	rotate := parseBoolList(items[1], "rotate")
+	rotate := parseRotate(items[1])
 	xy := parseIntList(items[2], "xy")
 	size := parseIntList(items[3], "size")
 	orig := parseIntList(items[4], "orig")
-	if rotate[0] {
+	if rotate != 0 {
 		size[0], size[1] = size[1], size[0]
 		orig[0], orig[1] = orig[1], orig[0]
 	}
@@ -89,7 +89,7 @@ func parseAtlasItem(items []string) *AtlasItem {
 	index := parseIntList(items[6], "index")
 	return &AtlasItem{
 		Name:   strings.TrimSpace(items[0]),
-		Rotate: rotate[0],
+		Rotate: rotate,
 		X:      xy[0],
 		Y:      xy[1],
 		W:      size[0],
@@ -100,6 +100,25 @@ func parseAtlasItem(items []string) *AtlasItem {
 		OrigY:  offset[1],
 		Index:  index[0],
 	}
+}
+
+// 0  90  270
+func parseRotate(item string) int {
+	item = strings.TrimSpace(item)
+	if !strings.HasPrefix(item, "rotate") {
+		panic(fmt.Sprintf("%s is not a valid rotate", item))
+	}
+	item = strings.TrimSpace(item[8:])
+	res, err := strconv.ParseBool(item) // 先尝试 bool 值
+	if err == nil {
+		if res {
+			return 90
+		}
+		return 0
+	}
+	temp, err := strconv.ParseInt(item, 10, 64)
+	HandleErr(err)
+	return int(temp) // 再尝试 数字
 }
 
 func parseAtlasHeader(items []string) *AtlasHeader {
@@ -138,17 +157,6 @@ func parseIntList(line string, name string) []int {
 		val, err := strconv.ParseInt(item, 10, 64)
 		HandleErr(err)
 		res = append(res, int(val))
-	}
-	return res
-}
-
-func parseBoolList(line string, name string) []bool {
-	items := parseStrList(line, name)
-	res := make([]bool, 0)
-	for _, item := range items {
-		val, err := strconv.ParseBool(item)
-		HandleErr(err)
-		res = append(res, val)
 	}
 	return res
 }

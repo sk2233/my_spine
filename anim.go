@@ -115,9 +115,12 @@ func (d *DeformAnimUpdate) Update(curr float32) {
 		next := d.KeyFrames[idx+1]
 		rate := (curr - pre.Time) / (next.Time - pre.Time)
 		for i := 0; i < len(d.Attachment.CurrVertices); i++ {
-			d.Attachment.CurrVertices[i] = mgl32.Vec2{
-				Lerp(pre.Vertexes[i].X(), next.Vertexes[i].X(), rate),
-				Lerp(pre.Vertexes[i].Y(), next.Vertexes[i].Y(), rate),
+			// TODO 为什么少了？
+			if i < len(pre.Vertexes) && i < len(next.Vertexes) {
+				d.Attachment.CurrVertices[i] = mgl32.Vec2{
+					Lerp(pre.Vertexes[i].X(), next.Vertexes[i].X(), rate),
+					Lerp(pre.Vertexes[i].Y(), next.Vertexes[i].Y(), rate),
+				}
 			}
 		}
 	}
@@ -209,7 +212,9 @@ func NewAnimController(anim *Animation, bones []*Bone, slots []*Slot, drawData m
 			updates = append(updates, NewTranslateAnimUpdate(bones[timeline.BoneIndex], timeline.KeyFrames))
 		case TimelineDeform:
 			slot := slots[timeline.SlotIndex]
-			updates = append(updates, NewDeformAnimUpdate(drawData[slot.Attachment].Attachment, timeline.KeyFrames))
+			if len(slot.Attachment) > 0 { // 可以绘制动画才有意义
+				updates = append(updates, NewDeformAnimUpdate(drawData[slot.Attachment].Attachment, timeline.KeyFrames))
+			}
 		case TimelineDrawOrder:
 			updates = append(updates, NewDrawOrderAnimUpdate(slots, timeline.KeyFrames))
 		case TimelineColor:
