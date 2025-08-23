@@ -31,29 +31,6 @@ type Atlas struct {
 	Image  string
 }
 
-//
-//func (a *Atlas) Save(path string) {
-//	file, err := os.Open(BasePath + a.Image)
-//	HandleErr(err)
-//	img, err := png.Decode(file)
-//	HandleErr(err)
-//	file.Close()
-//
-//	for _, item := range a.Items {
-//		temp := image.NewRGBA(image.Rect(0, 0, item.OrigW, item.OrigH))
-//		draw.Draw(temp, image.Rect(item.OrigX, item.OrigY, item.OrigX+item.W, item.OrigY+item.H),
-//			img, image.Pt(item.X, item.Y), draw.Over)
-//		if item.Rotate {
-//			temp = rotate90(temp)
-//		}
-//		file, err = os.Create(BasePath + path + "/" + item.Name + ".png")
-//		HandleErr(err)
-//		err = png.Encode(file, temp)
-//		HandleErr(err)
-//		file.Close()
-//	}
-//}
-
 func ParseAtlas(path string) *Atlas {
 	bs, err := os.ReadFile(BasePath + path)
 	HandleErr(err)

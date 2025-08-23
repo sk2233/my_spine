@@ -10,7 +10,7 @@ type IAnimUpdate interface {
 	Update(curr float32)
 }
 
-func GetIndexByTime(frames []*KeyFrame, curr float32) int {
+func GetIndexByTime(frames []*KeyFrameData, curr float32) int {
 	for i := len(frames) - 1; i >= 0; i-- {
 		if curr >= frames[i].Time {
 			return i
@@ -19,7 +19,7 @@ func GetIndexByTime(frames []*KeyFrame, curr float32) int {
 	return -1
 }
 
-// 后面可以实现贝塞尔曲线
+// TODO 后面可以实现贝塞尔曲线
 func Lerp(v1 float32, v2 float32, rate float32) float32 {
 	return v1 + (v2-v1)*rate
 }
@@ -38,11 +38,11 @@ func LerpRotation(r1 float32, r2 float32, rate float32) float32 {
 }
 
 type AttachmentAnimUpdate struct {
-	Slot      *Slot
-	KeyFrames []*KeyFrame // 至少 1 个
+	Slot      *SlotData
+	KeyFrames []*KeyFrameData // 至少 1 个
 }
 
-func NewAttachmentAnimUpdate(slot *Slot, keyFrames []*KeyFrame) *AttachmentAnimUpdate {
+func NewAttachmentAnimUpdate(slot *SlotData, keyFrames []*KeyFrameData) *AttachmentAnimUpdate {
 	return &AttachmentAnimUpdate{Slot: slot, KeyFrames: keyFrames}
 }
 
@@ -52,8 +52,8 @@ func (a *AttachmentAnimUpdate) Update(curr float32) {
 }
 
 type RotateAnimUpdate struct {
-	Bone      *Bone
-	KeyFrames []*KeyFrame
+	Bone      *BoneData
+	KeyFrames []*KeyFrameData
 }
 
 func (r *RotateAnimUpdate) Update(curr float32) {
@@ -69,16 +69,16 @@ func (r *RotateAnimUpdate) Update(curr float32) {
 	}
 }
 
-func NewRotateAnimUpdate(bone *Bone, keyFrames []*KeyFrame) *RotateAnimUpdate {
+func NewRotateAnimUpdate(bone *BoneData, keyFrames []*KeyFrameData) *RotateAnimUpdate {
 	return &RotateAnimUpdate{Bone: bone, KeyFrames: keyFrames}
 }
 
 type TranslateAnimUpdate struct {
-	Bone      *Bone
-	KeyFrames []*KeyFrame
+	Bone      *BoneData
+	KeyFrames []*KeyFrameData
 }
 
-func NewTranslateAnimUpdate(bone *Bone, keyFrames []*KeyFrame) *TranslateAnimUpdate {
+func NewTranslateAnimUpdate(bone *BoneData, keyFrames []*KeyFrameData) *TranslateAnimUpdate {
 	return &TranslateAnimUpdate{Bone: bone, KeyFrames: keyFrames}
 }
 
@@ -100,8 +100,8 @@ func (t *TranslateAnimUpdate) Update(curr float32) {
 }
 
 type DeformAnimUpdate struct {
-	Attachment *Attachment
-	KeyFrames  []*KeyFrame
+	Attachment *AttachmentData
+	KeyFrames  []*KeyFrameData
 }
 
 func (d *DeformAnimUpdate) Update(curr float32) {
@@ -126,13 +126,13 @@ func (d *DeformAnimUpdate) Update(curr float32) {
 	}
 }
 
-func NewDeformAnimUpdate(attachment *Attachment, keyFrames []*KeyFrame) *DeformAnimUpdate {
+func NewDeformAnimUpdate(attachment *AttachmentData, keyFrames []*KeyFrameData) *DeformAnimUpdate {
 	return &DeformAnimUpdate{Attachment: attachment, KeyFrames: keyFrames}
 }
 
 type DrawOrderAnimUpdate struct {
-	Slots     []*Slot
-	KeyFrames []*KeyFrame
+	Slots     []*SlotData
+	KeyFrames []*KeyFrameData
 }
 
 func (d *DrawOrderAnimUpdate) Update(curr float32) {
@@ -143,13 +143,13 @@ func (d *DrawOrderAnimUpdate) Update(curr float32) {
 	}
 }
 
-func NewDrawOrderAnimUpdate(slots []*Slot, keyFrames []*KeyFrame) *DrawOrderAnimUpdate {
+func NewDrawOrderAnimUpdate(slots []*SlotData, keyFrames []*KeyFrameData) *DrawOrderAnimUpdate {
 	return &DrawOrderAnimUpdate{Slots: slots, KeyFrames: keyFrames}
 }
 
 type ColorAnimUpdate struct {
-	Slot      *Slot
-	KeyFrames []*KeyFrame
+	Slot      *SlotData
+	KeyFrames []*KeyFrameData
 }
 
 func (c *ColorAnimUpdate) Update(curr float32) {
@@ -171,7 +171,7 @@ func (c *ColorAnimUpdate) Update(curr float32) {
 	}
 }
 
-func NewColorAnimUpdate(slot *Slot, keyFrames []*KeyFrame) *ColorAnimUpdate {
+func NewColorAnimUpdate(slot *SlotData, keyFrames []*KeyFrameData) *ColorAnimUpdate {
 	return &ColorAnimUpdate{Slot: slot, KeyFrames: keyFrames}
 }
 
@@ -196,7 +196,7 @@ func (c *AnimController) GetAnimName() string {
 	return c.AnimName
 }
 
-func NewAnimController(anim *Animation, bones []*Bone, slots []*Slot, drawData map[string]*DrawData) *AnimController {
+func NewAnimController(anim *AnimationData, bones []*BoneData, slots []*SlotData, drawData map[string]*DrawData) *AnimController {
 	updates := make([]IAnimUpdate, 0)
 	for i, timeline := range anim.Timelines {
 		if len(timeline.KeyFrames) == 0 {

@@ -17,7 +17,7 @@ import (
 )
 
 type BoneNode struct {
-	Bone     *Bone
+	Bone     *BoneData
 	Parent   *BoneNode
 	Children []*BoneNode
 }
@@ -37,11 +37,11 @@ func (n *BoneNode) Update() {
 }
 
 type OrderSlot struct {
-	Slot *Slot
+	Slot *SlotData
 }
 
 type DrawData struct {
-	Attachment *Attachment
+	Attachment *AttachmentData
 	Image      *ebiten.Image
 	Mat3       mgl32.Mat3
 	Option     *colorm.DrawTrianglesOptions
@@ -58,7 +58,7 @@ func (d *DrawData) GetImage(g *Game) *ebiten.Image {
 type Game struct {
 	// 原始数据
 	Atlas *Atlas
-	Skel  *Skel
+	Skel  *SkelData
 	// 扩展数据
 	BoneRoot       *BoneNode
 	OrderSlots     []*OrderSlot
@@ -69,7 +69,7 @@ type Game struct {
 	AnimController *AnimController
 }
 
-func NewGame(atlas *Atlas, skel *Skel) *Game {
+func NewGame(atlas *Atlas, skel *SkelData) *Game {
 	res := &Game{Atlas: atlas, Skel: skel, Pos: mgl32.Vec2{640, -550}, AnimIndex: 0}
 	res.BoneRoot = res.calculateBoneRoot()
 	res.OrderSlots = res.calculateOrderSlot()
@@ -147,7 +147,7 @@ func NewVertex(dx, dy, sx, sy float32) ebiten.Vertex {
 	}
 }
 
-func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
+func (g *Game) drawSlot(slot *SlotData, screen *ebiten.Image) {
 	if slot.BoneIndex < 0 || len(slot.CurrAttachment) == 0 {
 		return // 无效值
 	}

@@ -5,3 +5,5 @@ func HandleErr(err error) {
 		panic(err)
 	}
 }
+
+func Use(args ...any) {}
