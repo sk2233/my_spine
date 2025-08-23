@@ -10,7 +10,7 @@ type IAnimUpdate interface {
 	Update(curr float32)
 }
 
-func GetIndexByTime(frames []*KeyFrameData, curr float32) int {
+func GetIndexByTime(frames []*KeyFrame, curr float32) int {
 	for i := len(frames) - 1; i >= 0; i-- {
 		if curr >= frames[i].Time {
 			return i
@@ -38,47 +38,47 @@ func LerpRotation(r1 float32, r2 float32, rate float32) float32 {
 }
 
 type AttachmentAnimUpdate struct {
-	Slot      *SlotData
-	KeyFrames []*KeyFrameData // 至少 1 个
+	Slot      *Slot
+	KeyFrames []*KeyFrame // 至少 1 个
 }
 
-func NewAttachmentAnimUpdate(slot *SlotData, keyFrames []*KeyFrameData) *AttachmentAnimUpdate {
+func NewAttachmentAnimUpdate(slot *Slot, keyFrames []*KeyFrame) *AttachmentAnimUpdate {
 	return &AttachmentAnimUpdate{Slot: slot, KeyFrames: keyFrames}
 }
 
 func (a *AttachmentAnimUpdate) Update(curr float32) {
 	idx := max(GetIndexByTime(a.KeyFrames, curr), 0)
-	a.Slot.CurrAttachment = a.KeyFrames[idx].AttachmentName
+	a.Slot.CurrAttachment = a.KeyFrames[idx].Attachment
 }
 
 type RotateAnimUpdate struct {
-	Bone      *BoneData
-	KeyFrames []*KeyFrameData
+	Bone      *Bone
+	KeyFrames []*KeyFrame
 }
 
 func (r *RotateAnimUpdate) Update(curr float32) {
 	idx := GetIndexByTime(r.KeyFrames, curr)
 	if idx < 0 {
-		r.Bone.CurrRotation += r.KeyFrames[0].Rotation
+		r.Bone.CurrRotate += r.KeyFrames[0].Rotate
 	} else if idx+1 >= len(r.KeyFrames) {
-		r.Bone.CurrRotation += r.KeyFrames[idx].Rotation
+		r.Bone.CurrRotate += r.KeyFrames[idx].Rotate
 	} else {
 		pre := r.KeyFrames[idx]
 		next := r.KeyFrames[idx+1]
-		r.Bone.CurrRotation += LerpRotation(pre.Rotation, next.Rotation, (curr-pre.Time)/(next.Time-pre.Time))
+		r.Bone.CurrRotate += LerpRotation(pre.Rotate, next.Rotate, (curr-pre.Time)/(next.Time-pre.Time))
 	}
 }
 
-func NewRotateAnimUpdate(bone *BoneData, keyFrames []*KeyFrameData) *RotateAnimUpdate {
+func NewRotateAnimUpdate(bone *Bone, keyFrames []*KeyFrame) *RotateAnimUpdate {
 	return &RotateAnimUpdate{Bone: bone, KeyFrames: keyFrames}
 }
 
 type TranslateAnimUpdate struct {
-	Bone      *BoneData
-	KeyFrames []*KeyFrameData
+	Bone      *Bone
+	KeyFrames []*KeyFrame
 }
 
-func NewTranslateAnimUpdate(bone *BoneData, keyFrames []*KeyFrameData) *TranslateAnimUpdate {
+func NewTranslateAnimUpdate(bone *Bone, keyFrames []*KeyFrame) *TranslateAnimUpdate {
 	return &TranslateAnimUpdate{Bone: bone, KeyFrames: keyFrames}
 }
 
@@ -99,57 +99,110 @@ func (t *TranslateAnimUpdate) Update(curr float32) {
 	}
 }
 
+type ScaleAnimUpdate struct {
+	Bone      *Bone
+	KeyFrames []*KeyFrame
+}
+
+func NewScaleAnimUpdate(bone *Bone, keyFrames []*KeyFrame) *ScaleAnimUpdate {
+	return &ScaleAnimUpdate{Bone: bone, KeyFrames: keyFrames}
+}
+
+func (t *ScaleAnimUpdate) Update(curr float32) {
+	idx := GetIndexByTime(t.KeyFrames, curr)
+	if idx < 0 {
+		t.Bone.CurrScale = t.KeyFrames[0].Scale
+	} else if idx+1 >= len(t.KeyFrames) {
+		t.Bone.CurrScale = t.KeyFrames[idx].Scale
+	} else {
+		pre := t.KeyFrames[idx]
+		next := t.KeyFrames[idx+1]
+		rate := (curr - pre.Time) / (next.Time - pre.Time)
+		t.Bone.CurrScale = mgl32.Vec2{
+			Lerp(pre.Scale.X(), next.Scale.X(), rate),
+			Lerp(pre.Scale.Y(), next.Scale.Y(), rate),
+		}
+	}
+}
+
 type DeformAnimUpdate struct {
-	Attachment *AttachmentData
-	KeyFrames  []*KeyFrameData
+	Attachment *Attachment
+	KeyFrames  []*KeyFrame
+}
+
+func (d *DeformAnimUpdate) setDeform(deform []mgl32.Vec2, weightDeform [][]mgl32.Vec2) {
+	if d.Attachment.Weight {
+		for i, items := range d.Attachment.CurrWeightVertices {
+			for j, item := range items {
+				item.Offset = item.Offset.Add(weightDeform[i][j])
+			}
+		}
+	} else {
+		for i := 0; i < len(d.Attachment.CurrVertices); i++ {
+			d.Attachment.CurrVertices[i] = d.Attachment.CurrVertices[i].Add(deform[i])
+		}
+	}
 }
 
 func (d *DeformAnimUpdate) Update(curr float32) {
 	idx := GetIndexByTime(d.KeyFrames, curr)
 	if idx < 0 {
-		d.Attachment.CurrVertices = d.KeyFrames[0].Vertexes
+		d.setDeform(d.KeyFrames[0].Deform, d.KeyFrames[0].WeightDeform)
 	} else if idx+1 >= len(d.KeyFrames) {
-		d.Attachment.CurrVertices = d.KeyFrames[idx].Vertexes
+		d.setDeform(d.KeyFrames[idx].Deform, d.KeyFrames[idx].WeightDeform)
 	} else {
 		pre := d.KeyFrames[idx]
 		next := d.KeyFrames[idx+1]
 		rate := (curr - pre.Time) / (next.Time - pre.Time)
-		for i := 0; i < len(d.Attachment.CurrVertices); i++ {
-			// TODO 为什么少了？
-			if i < len(pre.Vertexes) && i < len(next.Vertexes) {
-				d.Attachment.CurrVertices[i] = mgl32.Vec2{
-					Lerp(pre.Vertexes[i].X(), next.Vertexes[i].X(), rate),
-					Lerp(pre.Vertexes[i].Y(), next.Vertexes[i].Y(), rate),
+		deform := make([]mgl32.Vec2, 0)
+		weightDeform := make([][]mgl32.Vec2, 0)
+		if d.Attachment.Weight {
+			for i, items := range pre.WeightDeform {
+				temp := make([]mgl32.Vec2, 0)
+				for j, item := range items {
+					temp = append(temp, mgl32.Vec2{
+						Lerp(item.X(), next.WeightDeform[i][j].X(), rate),
+						Lerp(item.Y(), next.WeightDeform[i][j].Y(), rate),
+					})
 				}
+				weightDeform = append(weightDeform, temp)
+			}
+		} else {
+			for i := 0; i < len(pre.Deform); i++ {
+				deform = append(deform, mgl32.Vec2{
+					Lerp(pre.Deform[i].X(), next.Deform[i].X(), rate),
+					Lerp(pre.Deform[i].Y(), next.Deform[i].Y(), rate),
+				})
 			}
 		}
+		d.setDeform(deform, weightDeform)
 	}
 }
 
-func NewDeformAnimUpdate(attachment *AttachmentData, keyFrames []*KeyFrameData) *DeformAnimUpdate {
+func NewDeformAnimUpdate(attachment *Attachment, keyFrames []*KeyFrame) *DeformAnimUpdate {
 	return &DeformAnimUpdate{Attachment: attachment, KeyFrames: keyFrames}
 }
 
 type DrawOrderAnimUpdate struct {
-	Slots     []*SlotData
-	KeyFrames []*KeyFrameData
+	Slots     []*Slot
+	KeyFrames []*KeyFrame
 }
 
 func (d *DrawOrderAnimUpdate) Update(curr float32) {
 	idx := max(GetIndexByTime(d.KeyFrames, curr), 0)
 	drawOrder := d.KeyFrames[idx].DrawOrder
 	for i := 0; i < len(d.Slots); i++ {
-		d.Slots[i].Order = drawOrder[i]
+		d.Slots[i].CurrOrder = drawOrder[i]
 	}
 }
 
-func NewDrawOrderAnimUpdate(slots []*SlotData, keyFrames []*KeyFrameData) *DrawOrderAnimUpdate {
+func NewDrawOrderAnimUpdate(slots []*Slot, keyFrames []*KeyFrame) *DrawOrderAnimUpdate {
 	return &DrawOrderAnimUpdate{Slots: slots, KeyFrames: keyFrames}
 }
 
 type ColorAnimUpdate struct {
-	Slot      *SlotData
-	KeyFrames []*KeyFrameData
+	Slot      *Slot
+	KeyFrames []*KeyFrame
 }
 
 func (c *ColorAnimUpdate) Update(curr float32) {
@@ -171,7 +224,7 @@ func (c *ColorAnimUpdate) Update(curr float32) {
 	}
 }
 
-func NewColorAnimUpdate(slot *SlotData, keyFrames []*KeyFrameData) *ColorAnimUpdate {
+func NewColorAnimUpdate(slot *Slot, keyFrames []*KeyFrame) *ColorAnimUpdate {
 	return &ColorAnimUpdate{Slot: slot, KeyFrames: keyFrames}
 }
 
@@ -196,29 +249,31 @@ func (c *AnimController) GetAnimName() string {
 	return c.AnimName
 }
 
-func NewAnimController(anim *AnimationData, bones []*BoneData, slots []*SlotData, drawData map[string]*DrawData) *AnimController {
+func NewAnimController(anim *Animation, bones []*Bone, slots []*Slot, attachments map[string]*AttachmentItem) *AnimController {
 	updates := make([]IAnimUpdate, 0)
 	for i, timeline := range anim.Timelines {
 		if len(timeline.KeyFrames) == 0 {
 			fmt.Println("error: no keyframes", i)
 			continue
 		}
-		switch timeline.TimelineType {
+		switch timeline.Type {
 		case TimelineAttachment:
-			updates = append(updates, NewAttachmentAnimUpdate(slots[timeline.SlotIndex], timeline.KeyFrames))
+			updates = append(updates, NewAttachmentAnimUpdate(slots[timeline.Slot], timeline.KeyFrames))
 		case TimelineRotate:
-			updates = append(updates, NewRotateAnimUpdate(bones[timeline.BoneIndex], timeline.KeyFrames))
+			updates = append(updates, NewRotateAnimUpdate(bones[timeline.Bone], timeline.KeyFrames))
 		case TimelineTranslate:
-			updates = append(updates, NewTranslateAnimUpdate(bones[timeline.BoneIndex], timeline.KeyFrames))
+			updates = append(updates, NewTranslateAnimUpdate(bones[timeline.Bone], timeline.KeyFrames))
+		case TimelineScale:
+			updates = append(updates, NewScaleAnimUpdate(bones[timeline.Bone], timeline.KeyFrames))
 		case TimelineDeform:
-			slot := slots[timeline.SlotIndex]
-			if len(slot.Attachment) > 0 { // 可以绘制动画才有意义
-				updates = append(updates, NewDeformAnimUpdate(drawData[slot.Attachment].Attachment, timeline.KeyFrames))
-			}
+			attachment := attachments[AttachmentKey(timeline.Attachment, timeline.Slot)]
+			updates = append(updates, NewDeformAnimUpdate(attachment.Attachment, timeline.KeyFrames))
 		case TimelineDrawOrder:
 			updates = append(updates, NewDrawOrderAnimUpdate(slots, timeline.KeyFrames))
 		case TimelineColor:
-			updates = append(updates, NewColorAnimUpdate(slots[timeline.SlotIndex], timeline.KeyFrames))
+			updates = append(updates, NewColorAnimUpdate(slots[timeline.Slot], timeline.KeyFrames))
+		case TimelineShear:
+			// 先不处理斜切
 		default:
 			panic("unknown timeline type")
 		}
