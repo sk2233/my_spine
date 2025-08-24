@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
-	"github.com/go-gl/mathgl/mgl32"
 	"math"
 	"time"
+
+	"github.com/go-gl/mathgl/mgl32"
 )
 
 type IAnimUpdate interface {
@@ -110,14 +111,14 @@ type RotateAnimUpdate struct {
 func (r *RotateAnimUpdate) Update(curr float32) {
 	idx := GetIndexByTime(r.KeyFrames, curr)
 	if idx < 0 {
-		r.Bone.CurrRotate += r.KeyFrames[0].Rotate
+		r.Bone.CurrRotate = r.Bone.Rotate + r.KeyFrames[0].Rotate
 	} else if idx+1 >= len(r.KeyFrames) {
-		r.Bone.CurrRotate += r.KeyFrames[idx].Rotate
+		r.Bone.CurrRotate = r.Bone.Rotate + r.KeyFrames[idx].Rotate
 	} else {
 		pre := r.KeyFrames[idx]
 		next := r.KeyFrames[idx+1]
 		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
-		r.Bone.CurrRotate += LerpRotation(pre.Rotate, next.Rotate, rate)
+		r.Bone.CurrRotate = r.Bone.Rotate + LerpRotation(pre.Rotate, next.Rotate, rate)
 	}
 }
 
@@ -137,14 +138,14 @@ func NewTranslateAnimUpdate(bone *Bone, keyFrames []*KeyFrame) *TranslateAnimUpd
 func (t *TranslateAnimUpdate) Update(curr float32) {
 	idx := GetIndexByTime(t.KeyFrames, curr)
 	if idx < 0 {
-		t.Bone.CurrPos = t.Bone.CurrPos.Add(t.KeyFrames[0].Offset)
+		t.Bone.CurrPos = t.Bone.Pos.Add(t.KeyFrames[0].Offset)
 	} else if idx+1 >= len(t.KeyFrames) {
-		t.Bone.CurrPos = t.Bone.CurrPos.Add(t.KeyFrames[idx].Offset)
+		t.Bone.CurrPos = t.Bone.Pos.Add(t.KeyFrames[idx].Offset)
 	} else {
 		pre := t.KeyFrames[idx]
 		next := t.KeyFrames[idx+1]
 		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
-		t.Bone.CurrPos = t.Bone.CurrPos.Add(mgl32.Vec2{
+		t.Bone.CurrPos = t.Bone.Pos.Add(mgl32.Vec2{
 			Lerp(pre.Offset.X(), next.Offset.X(), rate),
 			Lerp(pre.Offset.Y(), next.Offset.Y(), rate),
 		})
@@ -163,17 +164,17 @@ func NewScaleAnimUpdate(bone *Bone, keyFrames []*KeyFrame) *ScaleAnimUpdate {
 func (t *ScaleAnimUpdate) Update(curr float32) {
 	idx := GetIndexByTime(t.KeyFrames, curr)
 	if idx < 0 {
-		t.Bone.CurrScale = t.KeyFrames[0].Scale
+		t.Bone.CurrScale = Vec2Mul(t.Bone.Scale, t.KeyFrames[0].Scale)
 	} else if idx+1 >= len(t.KeyFrames) {
-		t.Bone.CurrScale = t.KeyFrames[idx].Scale
+		t.Bone.CurrScale = Vec2Mul(t.Bone.Scale, t.KeyFrames[idx].Scale)
 	} else {
 		pre := t.KeyFrames[idx]
 		next := t.KeyFrames[idx+1]
 		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
-		t.Bone.CurrScale = mgl32.Vec2{
+		t.Bone.CurrScale = Vec2Mul(t.Bone.Scale, mgl32.Vec2{
 			Lerp(pre.Scale.X(), next.Scale.X(), rate),
 			Lerp(pre.Scale.Y(), next.Scale.Y(), rate),
-		}
+		})
 	}
 }
 

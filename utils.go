@@ -20,3 +20,7 @@ func AttachmentKey(attachment string, slot int) string {
 func Vec4Mul(v1, v2 mgl32.Vec4) mgl32.Vec4 {
 	return mgl32.Vec4{v1.X() * v2.X(), v1.Y() * v2.Y(), v1.Z() * v2.Z(), v1.W() * v2.W()}
 }
+
+func Vec2Mul(v1, v2 mgl32.Vec2) mgl32.Vec2 {
+	return mgl32.Vec2{v1.X() * v2.X(), v1.Y() * v2.Y()}
+}

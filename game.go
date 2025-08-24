@@ -2,11 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/go-gl/mathgl/mgl32"
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/colorm"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"image"
 	"image/color"
 	"image/draw"
@@ -14,6 +9,12 @@ import (
 	"math"
 	"os"
 	"sort"
+
+	"github.com/go-gl/mathgl/mgl32"
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/colorm"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 type BoneNode struct {
@@ -76,7 +77,7 @@ type Game struct {
 }
 
 func NewGame(atlas *Atlas, skel *Skel) *Game {
-	res := &Game{Atlas: atlas, Skel: skel, Pos: mgl32.Vec2{640, -721}, AnimIndex: 0}
+	res := &Game{Atlas: atlas, Skel: skel, Pos: mgl32.Vec2{640, -720}, AnimIndex: 0}
 	res.Image = res.loadImage()
 	res.BoneRoot = res.calculateBoneRoot()
 	res.OrderSlots = res.calculateOrderSlot()
