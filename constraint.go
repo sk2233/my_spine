@@ -22,19 +22,19 @@ func (c *ConstraintController) updateTransformConstraints() {
 		}
 		target := c.Bones[item.Target]
 		rotate := target.WorldRotate + item.Rotate
-		offset := target.WorldPos.Add(item.Offset)
+		offset := target.Mat3.Mul3x1(item.Offset.Vec3(1)).Vec2()
 		scale := target.WorldScale.Add(item.Scale)
 		for _, idx := range item.Bones {
 			bone := c.Bones[idx]
-			if item.CurrRotateMix > 0 {
+			if item.CurrRotateMix != 0 {
 				bone.WorldRotate = rotate*item.CurrRotateMix + bone.WorldRotate*(1-item.CurrRotateMix)
 				bone.Modify = true
 			}
-			if item.CurrOffsetMix > 0 {
+			if item.CurrOffsetMix != 0 {
 				bone.WorldPos = offset.Mul(item.CurrOffsetMix).Add(bone.WorldPos.Mul(1 - item.CurrOffsetMix))
 				bone.Modify = true
 			}
-			if item.CurrScaleMix > 0 {
+			if item.CurrScaleMix != 0 {
 				bone.WorldScale = scale.Mul(item.CurrScaleMix).Add(bone.WorldScale.Mul(1 - item.CurrScaleMix))
 				bone.Modify = true
 			}

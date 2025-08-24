@@ -5,8 +5,9 @@ import (
 )
 
 func main() {
-	atlas := ParseAtlas("res/003_kalts/build_char_003_kalts.atlas")
-	skel := ParseSkel("res/003_kalts/build_char_003_kalts.skel")
+	// 缺失 IK 的支持
+	atlas := ParseAtlas("res/358_lisa/build_char_358_lisa.atlas")
+	skel := ParseSkel("res/358_lisa/build_char_358_lisa.skel")
 
 	ebiten.SetWindowSize(1280, 720)
 	err := ebiten.RunGame(NewGame(atlas, skel))

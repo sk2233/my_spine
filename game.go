@@ -29,30 +29,19 @@ func (n *BoneNode) Update() {
 		n.Bone.WorldPos = n.Bone.LocalPos
 		n.Bone.WorldScale = n.Bone.LocalScale
 	} else {
-		parent := n.Parent.Bone
+		parent := n.Parent.Bone // 坐标计算毕竟是在父坐标系还是会受影响的
+		n.Bone.WorldPos = parent.Mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
 		switch n.Bone.TransformMode {
 		case TransformNormal:
-			mat3 := mgl32.Translate2D(parent.WorldPos.X(), parent.WorldPos.Y()).
-				Mul3(mgl32.HomogRotate2D(parent.WorldRotate * math.Pi / 180)).
-				Mul3(mgl32.Scale2D(parent.WorldScale.X(), parent.WorldScale.Y()))
-			n.Bone.WorldPos = mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
 			n.Bone.WorldRotate = n.Bone.LocalRotate + parent.WorldRotate
 			n.Bone.WorldScale = Vec2Mul(n.Bone.LocalScale, parent.WorldScale)
 		case TransformOnlyTranslation:
-			mat3 := mgl32.Translate2D(parent.WorldPos.X(), parent.WorldPos.Y())
-			n.Bone.WorldPos = mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
 			n.Bone.WorldRotate = n.Bone.LocalRotate
 			n.Bone.WorldScale = n.Bone.LocalScale
 		case TransformNoRotationOrReflection:
-			mat3 := mgl32.Translate2D(parent.WorldPos.X(), parent.WorldPos.Y()).
-				Mul3(mgl32.Scale2D(parent.WorldScale.X(), parent.WorldScale.Y()))
-			n.Bone.WorldPos = mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
 			n.Bone.WorldRotate = n.Bone.LocalRotate
 			n.Bone.WorldScale = Vec2Mul(n.Bone.LocalScale, parent.WorldScale)
 		case TransformNoScale, TransformNoScaleOrReflection:
-			mat3 := mgl32.Translate2D(parent.WorldPos.X(), parent.WorldPos.Y()).
-				Mul3(mgl32.HomogRotate2D(parent.WorldRotate * math.Pi / 180))
-			n.Bone.WorldPos = mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
 			n.Bone.WorldRotate = n.Bone.LocalRotate + parent.WorldRotate
 			n.Bone.WorldScale = n.Bone.LocalScale
 		default:
@@ -85,29 +74,18 @@ func (n *BoneNode) ApplyModify() {
 
 func (n *BoneNode) updateWorld() {
 	parent := n.Parent.Bone // 肯定有父节点
+	n.Bone.WorldPos = parent.Mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
 	switch n.Bone.TransformMode {
 	case TransformNormal:
-		mat3 := mgl32.Translate2D(parent.WorldPos.X(), parent.WorldPos.Y()).
-			Mul3(mgl32.HomogRotate2D(parent.WorldRotate * math.Pi / 180)).
-			Mul3(mgl32.Scale2D(parent.WorldScale.X(), parent.WorldScale.Y()))
-		n.Bone.WorldPos = mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
 		n.Bone.WorldRotate = n.Bone.LocalRotate + parent.WorldRotate
 		n.Bone.WorldScale = Vec2Mul(n.Bone.LocalScale, parent.WorldScale)
 	case TransformOnlyTranslation:
-		mat3 := mgl32.Translate2D(parent.WorldPos.X(), parent.WorldPos.Y())
-		n.Bone.WorldPos = mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
 		n.Bone.WorldRotate = n.Bone.LocalRotate
 		n.Bone.WorldScale = n.Bone.LocalScale
 	case TransformNoRotationOrReflection:
-		mat3 := mgl32.Translate2D(parent.WorldPos.X(), parent.WorldPos.Y()).
-			Mul3(mgl32.Scale2D(parent.WorldScale.X(), parent.WorldScale.Y()))
-		n.Bone.WorldPos = mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
 		n.Bone.WorldRotate = n.Bone.LocalRotate
 		n.Bone.WorldScale = Vec2Mul(n.Bone.LocalScale, parent.WorldScale)
 	case TransformNoScale, TransformNoScaleOrReflection:
-		mat3 := mgl32.Translate2D(parent.WorldPos.X(), parent.WorldPos.Y()).
-			Mul3(mgl32.HomogRotate2D(parent.WorldRotate * math.Pi / 180))
-		n.Bone.WorldPos = mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
 		n.Bone.WorldRotate = n.Bone.LocalRotate + parent.WorldRotate
 		n.Bone.WorldScale = n.Bone.LocalScale
 	default:
