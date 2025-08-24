@@ -111,14 +111,14 @@ type RotateAnimUpdate struct {
 func (r *RotateAnimUpdate) Update(curr float32) {
 	idx := GetIndexByTime(r.KeyFrames, curr)
 	if idx < 0 {
-		r.Bone.CurrRotate = r.Bone.Rotate + r.KeyFrames[0].Rotate
+		r.Bone.LocalRotate = r.Bone.Rotate + r.KeyFrames[0].Rotate
 	} else if idx+1 >= len(r.KeyFrames) {
-		r.Bone.CurrRotate = r.Bone.Rotate + r.KeyFrames[idx].Rotate
+		r.Bone.LocalRotate = r.Bone.Rotate + r.KeyFrames[idx].Rotate
 	} else {
 		pre := r.KeyFrames[idx]
 		next := r.KeyFrames[idx+1]
 		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
-		r.Bone.CurrRotate = r.Bone.Rotate + LerpRotation(pre.Rotate, next.Rotate, rate)
+		r.Bone.LocalRotate = r.Bone.Rotate + LerpRotation(pre.Rotate, next.Rotate, rate)
 	}
 }
 
@@ -138,14 +138,14 @@ func NewTranslateAnimUpdate(bone *Bone, keyFrames []*KeyFrame) *TranslateAnimUpd
 func (t *TranslateAnimUpdate) Update(curr float32) {
 	idx := GetIndexByTime(t.KeyFrames, curr)
 	if idx < 0 {
-		t.Bone.CurrPos = t.Bone.Pos.Add(t.KeyFrames[0].Offset)
+		t.Bone.LocalPos = t.Bone.Pos.Add(t.KeyFrames[0].Offset)
 	} else if idx+1 >= len(t.KeyFrames) {
-		t.Bone.CurrPos = t.Bone.Pos.Add(t.KeyFrames[idx].Offset)
+		t.Bone.LocalPos = t.Bone.Pos.Add(t.KeyFrames[idx].Offset)
 	} else {
 		pre := t.KeyFrames[idx]
 		next := t.KeyFrames[idx+1]
 		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
-		t.Bone.CurrPos = t.Bone.Pos.Add(mgl32.Vec2{
+		t.Bone.LocalPos = t.Bone.Pos.Add(mgl32.Vec2{
 			Lerp(pre.Offset.X(), next.Offset.X(), rate),
 			Lerp(pre.Offset.Y(), next.Offset.Y(), rate),
 		})
@@ -164,14 +164,14 @@ func NewScaleAnimUpdate(bone *Bone, keyFrames []*KeyFrame) *ScaleAnimUpdate {
 func (t *ScaleAnimUpdate) Update(curr float32) {
 	idx := GetIndexByTime(t.KeyFrames, curr)
 	if idx < 0 {
-		t.Bone.CurrScale = Vec2Mul(t.Bone.Scale, t.KeyFrames[0].Scale)
+		t.Bone.LocalScale = Vec2Mul(t.Bone.Scale, t.KeyFrames[0].Scale)
 	} else if idx+1 >= len(t.KeyFrames) {
-		t.Bone.CurrScale = Vec2Mul(t.Bone.Scale, t.KeyFrames[idx].Scale)
+		t.Bone.LocalScale = Vec2Mul(t.Bone.Scale, t.KeyFrames[idx].Scale)
 	} else {
 		pre := t.KeyFrames[idx]
 		next := t.KeyFrames[idx+1]
 		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
-		t.Bone.CurrScale = Vec2Mul(t.Bone.Scale, mgl32.Vec2{
+		t.Bone.LocalScale = Vec2Mul(t.Bone.Scale, mgl32.Vec2{
 			Lerp(pre.Scale.X(), next.Scale.X(), rate),
 			Lerp(pre.Scale.Y(), next.Scale.Y(), rate),
 		})
@@ -281,6 +281,35 @@ func NewColorAnimUpdate(slot *Slot, keyFrames []*KeyFrame) *ColorAnimUpdate {
 	return &ColorAnimUpdate{Slot: slot, KeyFrames: keyFrames}
 }
 
+type TransformConstraintAnimUpdate struct {
+	TransformConstraint *TransformConstraint
+	KeyFrames           []*KeyFrame
+}
+
+func (t *TransformConstraintAnimUpdate) Update(curr float32) {
+	idx := GetIndexByTime(t.KeyFrames, curr)
+	if idx < 0 {
+		t.TransformConstraint.CurrRotateMix = t.KeyFrames[0].RotateMix
+		t.TransformConstraint.CurrOffsetMix = t.KeyFrames[0].OffsetMix
+		t.TransformConstraint.CurrScaleMix = t.KeyFrames[0].ScaleMix
+	} else if idx+1 >= len(t.KeyFrames) {
+		t.TransformConstraint.CurrRotateMix = t.KeyFrames[idx].RotateMix
+		t.TransformConstraint.CurrOffsetMix = t.KeyFrames[idx].OffsetMix
+		t.TransformConstraint.CurrScaleMix = t.KeyFrames[idx].ScaleMix
+	} else {
+		pre := t.KeyFrames[idx]
+		next := t.KeyFrames[idx+1]
+		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
+		t.TransformConstraint.CurrRotateMix = Lerp(pre.RotateMix, next.RotateMix, rate)
+		t.TransformConstraint.CurrOffsetMix = Lerp(pre.OffsetMix, next.OffsetMix, rate)
+		t.TransformConstraint.CurrScaleMix = Lerp(pre.ScaleMix, next.ScaleMix, rate)
+	}
+}
+
+func NewTransformConstraintAnimUpdate(transformConstraint *TransformConstraint, keyFrames []*KeyFrame) *TransformConstraintAnimUpdate {
+	return &TransformConstraintAnimUpdate{TransformConstraint: transformConstraint, KeyFrames: keyFrames}
+}
+
 type TwoColorAnimUpdate struct {
 	Slot      *Slot
 	KeyFrames []*KeyFrame
@@ -338,7 +367,7 @@ func (c *AnimController) GetAnimName() string {
 	return c.AnimName
 }
 
-func NewAnimController(anim *Animation, bones []*Bone, slots []*Slot, attachments map[string]*AttachmentItem) *AnimController {
+func NewAnimController(anim *Animation, skel *Skel, attachments map[string]*AttachmentItem) *AnimController {
 	updates := make([]IAnimUpdate, 0)
 	for i, timeline := range anim.Timelines {
 		if len(timeline.KeyFrames) == 0 {
@@ -347,22 +376,24 @@ func NewAnimController(anim *Animation, bones []*Bone, slots []*Slot, attachment
 		}
 		switch timeline.Type {
 		case TimelineAttachment:
-			updates = append(updates, NewAttachmentAnimUpdate(slots[timeline.Slot], timeline.KeyFrames))
+			updates = append(updates, NewAttachmentAnimUpdate(skel.Slots[timeline.Slot], timeline.KeyFrames))
 		case TimelineRotate:
-			updates = append(updates, NewRotateAnimUpdate(bones[timeline.Bone], timeline.KeyFrames))
+			updates = append(updates, NewRotateAnimUpdate(skel.Bones[timeline.Bone], timeline.KeyFrames))
 		case TimelineTranslate:
-			updates = append(updates, NewTranslateAnimUpdate(bones[timeline.Bone], timeline.KeyFrames))
+			updates = append(updates, NewTranslateAnimUpdate(skel.Bones[timeline.Bone], timeline.KeyFrames))
 		case TimelineScale:
-			updates = append(updates, NewScaleAnimUpdate(bones[timeline.Bone], timeline.KeyFrames))
+			updates = append(updates, NewScaleAnimUpdate(skel.Bones[timeline.Bone], timeline.KeyFrames))
 		case TimelineDeform:
 			attachment := attachments[AttachmentKey(timeline.Attachment, timeline.Slot)]
 			updates = append(updates, NewDeformAnimUpdate(attachment.Attachment, timeline.KeyFrames))
 		case TimelineDrawOrder:
-			updates = append(updates, NewDrawOrderAnimUpdate(slots, timeline.KeyFrames))
+			updates = append(updates, NewDrawOrderAnimUpdate(skel.Slots, timeline.KeyFrames))
 		case TimelineColor:
-			updates = append(updates, NewColorAnimUpdate(slots[timeline.Slot], timeline.KeyFrames))
+			updates = append(updates, NewColorAnimUpdate(skel.Slots[timeline.Slot], timeline.KeyFrames))
 		case TimelineTwoColor:
-			updates = append(updates, NewTwoColorAnimUpdate(slots[timeline.Slot], timeline.KeyFrames))
+			updates = append(updates, NewTwoColorAnimUpdate(skel.Slots[timeline.Slot], timeline.KeyFrames))
+		case TimelineTransformConstraint:
+			updates = append(updates, NewTransformConstraintAnimUpdate(skel.TransformConstraints[timeline.TransformConstraint], timeline.KeyFrames))
 		case TimelineShear:
 			// 先不处理斜切
 		default:

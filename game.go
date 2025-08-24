@@ -24,33 +24,53 @@ type BoneNode struct {
 }
 
 func (n *BoneNode) Update() {
-	mat3 := mgl32.Ident3()
-	mat3[4] = -1         // 颠倒上下 其坐标系与 OpenGL 相比是上下颠倒的
-	if n.Parent != nil { // 父节点肯定计算完了
+	if n.Parent == nil { // 没有父节点局部坐标就是世界坐标
+		n.Bone.WorldRotate = n.Bone.LocalRotate
+		n.Bone.WorldPos = n.Bone.LocalPos
+		n.Bone.WorldScale = n.Bone.LocalScale
+	} else {
+		parent := n.Parent.Bone
 		switch n.Bone.TransformMode {
 		case TransformNormal:
-			mat3 = n.Parent.Bone.NormalMat3
+			mat3 := mgl32.Translate2D(parent.WorldPos.X(), parent.WorldPos.Y()).
+				Mul3(mgl32.HomogRotate2D(parent.WorldRotate * math.Pi / 180)).
+				Mul3(mgl32.Scale2D(parent.WorldScale.X(), parent.WorldScale.Y()))
+			n.Bone.WorldPos = mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
+			n.Bone.WorldRotate = n.Bone.LocalRotate + parent.WorldRotate
+			n.Bone.WorldScale = Vec2Mul(n.Bone.LocalScale, parent.WorldScale)
 		case TransformOnlyTranslation:
-			mat3 = n.Parent.Bone.TranslationMat3
+			mat3 := mgl32.Translate2D(parent.WorldPos.X(), parent.WorldPos.Y())
+			n.Bone.WorldPos = mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
+			n.Bone.WorldRotate = n.Bone.LocalRotate
+			n.Bone.WorldScale = n.Bone.LocalScale
 		case TransformNoRotationOrReflection:
-			mat3 = n.Parent.Bone.NoRotateMat3
+			mat3 := mgl32.Translate2D(parent.WorldPos.X(), parent.WorldPos.Y()).
+				Mul3(mgl32.Scale2D(parent.WorldScale.X(), parent.WorldScale.Y()))
+			n.Bone.WorldPos = mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
+			n.Bone.WorldRotate = n.Bone.LocalRotate
+			n.Bone.WorldScale = Vec2Mul(n.Bone.LocalScale, parent.WorldScale)
 		case TransformNoScale, TransformNoScaleOrReflection:
-			mat3 = n.Parent.Bone.NoScaleMat3
+			mat3 := mgl32.Translate2D(parent.WorldPos.X(), parent.WorldPos.Y()).
+				Mul3(mgl32.HomogRotate2D(parent.WorldRotate * math.Pi / 180))
+			n.Bone.WorldPos = mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
+			n.Bone.WorldRotate = n.Bone.LocalRotate + parent.WorldRotate
+			n.Bone.WorldScale = n.Bone.LocalScale
 		default:
-			panic(fmt.Sprintf("unknown transform mode: %v", n.Bone.TransformMode))
+			panic(fmt.Sprintf("invalid mode: %v", n.Bone.TransformMode))
 		}
 	}
-	// 计算各种子节点可能需要的
-	n.Bone.NormalMat3 = mat3.Mul3(mgl32.Translate2D(n.Bone.CurrPos.X(), n.Bone.CurrPos.Y())).
-		Mul3(mgl32.HomogRotate2D(n.Bone.CurrRotate * math.Pi / 180)).
-		Mul3(mgl32.Scale2D(n.Bone.CurrScale.X(), n.Bone.CurrScale.Y()))
-	n.Bone.TranslationMat3 = mat3.Mul3(mgl32.Translate2D(n.Bone.CurrPos.X(), n.Bone.CurrPos.Y()))
-	n.Bone.NoRotateMat3 = mat3.Mul3(mgl32.Translate2D(n.Bone.CurrPos.X(), n.Bone.CurrPos.Y())).
-		Mul3(mgl32.Scale2D(n.Bone.CurrScale.X(), n.Bone.CurrScale.Y()))
-	n.Bone.NoScaleMat3 = mat3.Mul3(mgl32.Translate2D(n.Bone.CurrPos.X(), n.Bone.CurrPos.Y())).
-		Mul3(mgl32.HomogRotate2D(n.Bone.CurrRotate * math.Pi / 180))
 	for _, child := range n.Children {
 		child.Update()
+	}
+}
+
+// 计算世界变换矩阵
+func (n *BoneNode) ApplyMat3() {
+	n.Bone.Mat3 = mgl32.Translate2D(n.Bone.WorldPos.X(), n.Bone.WorldPos.Y()).
+		Mul3(mgl32.HomogRotate2D(n.Bone.WorldRotate * math.Pi / 180)).
+		Mul3(mgl32.Scale2D(n.Bone.WorldScale.X(), n.Bone.WorldScale.Y()))
+	for _, item := range n.Children {
+		item.ApplyMat3()
 	}
 }
 
@@ -74,15 +94,19 @@ type Game struct {
 	// 动画
 	AnimIndex      int
 	AnimController *AnimController
+	// 约束
+	ConstraintController *ConstraintController
 }
 
 func NewGame(atlas *Atlas, skel *Skel) *Game {
-	res := &Game{Atlas: atlas, Skel: skel, Pos: mgl32.Vec2{640, -720}, AnimIndex: 0}
+	res := &Game{Atlas: atlas, Skel: skel, Pos: mgl32.Vec2{640, 100}, AnimIndex: 0}
 	res.Image = res.loadImage()
 	res.BoneRoot = res.calculateBoneRoot()
 	res.OrderSlots = res.calculateOrderSlot()
 	res.Attachments = res.calculateAttachments()
-	res.AnimController = NewAnimController(skel.Animations[res.AnimIndex], skel.Bones, skel.Slots, res.Attachments)
+	res.AnimController = NewAnimController(skel.Animations[res.AnimIndex], skel, res.Attachments)
+	res.ConstraintController = NewConstraintController(skel.Bones, skel.PathConstraints, skel.TransformConstraints)
+	res.fillPathAttachment()
 	return res
 }
 
@@ -102,13 +126,14 @@ func (g *Game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyJ) {
 		g.AnimIndex = (g.AnimIndex - 1 + len(g.Skel.Animations)) % len(g.Skel.Animations)
 		anim := g.Skel.Animations[g.AnimIndex]
-		g.AnimController = NewAnimController(anim, g.Skel.Bones, g.Skel.Slots, g.Attachments)
+		g.AnimController = NewAnimController(anim, g.Skel, g.Attachments)
 	} else if inpututil.IsKeyJustPressed(ebiten.KeyK) {
 		g.AnimIndex = (g.AnimIndex + 1) % len(g.Skel.Animations)
 		anim := g.Skel.Animations[g.AnimIndex]
-		g.AnimController = NewAnimController(anim, g.Skel.Bones, g.Skel.Slots, g.Attachments)
+		g.AnimController = NewAnimController(anim, g.Skel, g.Attachments)
 	}
-	// 初始化数据
+	g.BoneRoot.Bone.Pos = g.Pos
+	// 初始化数据  运行时数据默认为初始状态，防止动画没有改动为 零值
 	for i, slot := range g.Skel.Slots {
 		slot.CurrOrder = i
 		slot.CurrAttachment = slot.Attachment
@@ -116,9 +141,9 @@ func (g *Game) Update() error {
 		slot.CurrDarkColor = slot.DarkColor
 	}
 	for _, bone := range g.Skel.Bones {
-		bone.CurrRotate = bone.Rotate
-		bone.CurrPos = bone.Pos
-		bone.CurrScale = bone.Scale
+		bone.LocalRotate = bone.Rotate
+		bone.LocalPos = bone.Pos
+		bone.LocalScale = bone.Scale
 	}
 	for _, attachment := range g.Skel.Skin.Attachments {
 		if attachment.Weight {
@@ -139,11 +164,20 @@ func (g *Game) Update() error {
 			copy(attachment.CurrVertices, attachment.Vertices)
 		}
 	}
+	for _, item := range g.Skel.TransformConstraints {
+		item.CurrScaleMix = item.ScaleMix
+		item.CurrRotateMix = item.RotateMix
+		item.CurrOffsetMix = item.OffsetMix
+	}
 	// 更新数据
+	// 应用动画 都是局部坐标系下的对象或者坐标系无关对象
 	g.AnimController.Update()
-	g.BoneRoot.Bone.CurrPos = g.Pos
-	g.BoneRoot.Bone.CurrScale = mgl32.Vec2{0.35, 0.35}
-	g.BoneRoot.Update()
+	// 计算出世界坐标 世界旋转 世界缩放
+	g.BoneRoot.Update() // 应用约束前需要先算一遍
+	// 对世界坐标下的对象应用约束
+	g.BoneRoot.ApplyMat3() // 应用世界矩阵方便后续使用
+	g.ConstraintController.Update()
+	g.BoneRoot.ApplyMat3() // 修改了世界坐标重新计算世界矩阵
 	sort.Slice(g.OrderSlots, func(i, j int) bool {
 		return g.OrderSlots[i].CurrOrder < g.OrderSlots[j].CurrOrder
 	})
@@ -186,7 +220,7 @@ func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
 	currClr := Vec4Mul(slot.CurrColor, slot.CurrDarkColor)
 	// 不同组件的展示是 动画控制的，默认会全部展示
 	if attachment.Type == AttachmentRegion {
-		mat3 := g.Skel.Bones[slot.Bone].NormalMat3.Mul3(mgl32.Translate2D(attachment.Pos.X(), attachment.Pos.Y())).
+		mat3 := g.Skel.Bones[slot.Bone].Mat3.Mul3(mgl32.Translate2D(attachment.Pos.X(), attachment.Pos.Y())).
 			Mul3(mgl32.HomogRotate2D(attachment.Rotate * math.Pi / 180)).
 			Mul3(mgl32.Scale2D(attachment.Scale.X(), attachment.Scale.Y()))
 		v0 := mat3.Mul3x1(mgl32.Vec3{-w / 2, h / 2, 1}).Vec2()
@@ -205,14 +239,14 @@ func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
 				res := mgl32.Vec2{}
 				wv := attachment.CurrWeightVertices[i]
 				for _, vec := range wv {
-					mat3 := g.Skel.Bones[vec.Bone].NormalMat3
+					mat3 := g.Skel.Bones[vec.Bone].Mat3
 					temp := mat3.Mul3x1(vec.Offset.Vec3(1)).Vec2()
 					res = res.Add(temp.Mul(vec.Weight))
 				}
 				vertices = append(vertices, NewVertex(res.X(), res.Y(), uv.X()*w, uv.Y()*h))
 			}
 		} else {
-			mat3 := g.Skel.Bones[slot.Bone].NormalMat3
+			mat3 := g.Skel.Bones[slot.Bone].Mat3
 			for i, uv := range attachment.UVs {
 				vec := mat3.Mul3x1(attachment.CurrVertices[i].Vec3(1)).Vec2()
 				vertices = append(vertices, NewVertex(vec.X(), vec.Y(), uv.X()*w, uv.Y()*h))
@@ -225,14 +259,14 @@ func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
 			for _, wv := range attachment.CurrWeightVertices {
 				res := mgl32.Vec2{}
 				for _, vec := range wv {
-					mat3 := g.Skel.Bones[vec.Bone].NormalMat3
+					mat3 := g.Skel.Bones[vec.Bone].Mat3
 					temp := mat3.Mul3x1(vec.Offset.Vec3(1)).Vec2()
 					res = res.Add(temp.Mul(vec.Weight))
 				}
 				vertices = append(vertices, NewVertex(res.X(), res.Y(), 0, 0))
 			}
 		} else {
-			mat3 := g.Skel.Bones[slot.Bone].NormalMat3
+			mat3 := g.Skel.Bones[slot.Bone].Mat3
 			for _, vertex := range attachment.CurrVertices {
 				vec := mat3.Mul3x1(vertex.Vec3(1)).Vec2()
 				vertices = append(vertices, NewVertex(vec.X(), vec.Y(), 0, 0))
@@ -361,4 +395,12 @@ func (g *Game) loadImage() image.Image {
 	HandleErr(err)
 	file.Close()
 	return img
+}
+
+func (g *Game) fillPathAttachment() {
+	for _, item := range g.Skel.PathConstraints {
+		slot := g.Skel.Slots[item.Target]
+		item.Attachment = g.Attachments[AttachmentKey(slot.Attachment, slot.Index)].Attachment
+		item.Bone = slot.Bone
+	}
 }

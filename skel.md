@@ -6,3 +6,6 @@ https://zh.esotericsoftware.com/spine-binary-format
 https://github.com/EsotericSoftware/spine-runtimes/tree/3.8/spine-libgdx
 ### 注意
 只支持 spine 3.8 明日方舟 使用的也是 3.8 其他版本需要重新参考文档与项目进行开发
+### 多参考官方实现
+![img.png](img.png)<br>
+官方实现还有相关功能链接与功能视频讲解，方便了解功能
