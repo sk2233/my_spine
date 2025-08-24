@@ -28,12 +28,15 @@ func (c *ConstraintController) updateTransformConstraints() {
 			bone := c.Bones[idx]
 			if item.CurrRotateMix > 0 {
 				bone.WorldRotate = rotate*item.CurrRotateMix + bone.WorldRotate*(1-item.CurrRotateMix)
+				bone.Modify = true
 			}
 			if item.CurrOffsetMix > 0 {
 				bone.WorldPos = offset.Mul(item.CurrOffsetMix).Add(bone.WorldPos.Mul(1 - item.CurrOffsetMix))
+				bone.Modify = true
 			}
 			if item.CurrScaleMix > 0 {
 				bone.WorldScale = scale.Mul(item.CurrScaleMix).Add(bone.WorldScale.Mul(1 - item.CurrScaleMix))
+				bone.Modify = true
 			}
 		}
 	}
@@ -66,8 +69,9 @@ func (c *ConstraintController) updatePathConstraints() {
 		for _, idx := range item.Bones {
 			bone := c.Bones[idx]
 			vec := c.calculatePosAndRotate(vs, pos) // 先只管位移
-			if item.OffsetMix > 0 {                 // TODO 直接修改？子物体怎么办？
+			if item.OffsetMix > 0 {
 				bone.WorldPos = vec.Mul(item.OffsetMix).Add(bone.WorldPos.Mul(1 - item.OffsetMix))
+				bone.Modify = true
 			}
 			pos += item.Space
 		}

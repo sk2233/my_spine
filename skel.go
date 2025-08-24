@@ -45,6 +45,7 @@ type Bone struct {
 	WorldPos    mgl32.Vec2
 	WorldScale  mgl32.Vec2
 	Mat3        mgl32.Mat3 // 世界变换矩阵
+	Modify      bool       // 标记世界坐标被修改过，需要重新递归计算
 }
 
 const (

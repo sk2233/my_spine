@@ -59,18 +59,66 @@ func (n *BoneNode) Update() {
 			panic(fmt.Sprintf("invalid mode: %v", n.Bone.TransformMode))
 		}
 	}
+	n.Bone.Mat3 = mgl32.Translate2D(n.Bone.WorldPos.X(), n.Bone.WorldPos.Y()).
+		Mul3(mgl32.HomogRotate2D(n.Bone.WorldRotate * math.Pi / 180)).
+		Mul3(mgl32.Scale2D(n.Bone.WorldScale.X(), n.Bone.WorldScale.Y()))
 	for _, child := range n.Children {
 		child.Update()
 	}
 }
 
-// 计算世界变换矩阵
-func (n *BoneNode) ApplyMat3() {
+func (n *BoneNode) ApplyModify() {
+	if n.Bone.Modify {
+		n.Bone.Mat3 = mgl32.Translate2D(n.Bone.WorldPos.X(), n.Bone.WorldPos.Y()).
+			Mul3(mgl32.HomogRotate2D(n.Bone.WorldRotate * math.Pi / 180)).
+			Mul3(mgl32.Scale2D(n.Bone.WorldScale.X(), n.Bone.WorldScale.Y()))
+		n.Bone.Modify = false // 源头节点只更新 Mat3 即可
+		for _, item := range n.Children {
+			item.updateWorld() // 会清楚子节点的 Modify
+		}
+	} else { // TODO 父子节点同时被修改怎么办？ 父节点递归更新会丢掉子节点的更新
+		for _, item := range n.Children {
+			item.ApplyModify()
+		}
+	}
+}
+
+func (n *BoneNode) updateWorld() {
+	parent := n.Parent.Bone // 肯定有父节点
+	switch n.Bone.TransformMode {
+	case TransformNormal:
+		mat3 := mgl32.Translate2D(parent.WorldPos.X(), parent.WorldPos.Y()).
+			Mul3(mgl32.HomogRotate2D(parent.WorldRotate * math.Pi / 180)).
+			Mul3(mgl32.Scale2D(parent.WorldScale.X(), parent.WorldScale.Y()))
+		n.Bone.WorldPos = mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
+		n.Bone.WorldRotate = n.Bone.LocalRotate + parent.WorldRotate
+		n.Bone.WorldScale = Vec2Mul(n.Bone.LocalScale, parent.WorldScale)
+	case TransformOnlyTranslation:
+		mat3 := mgl32.Translate2D(parent.WorldPos.X(), parent.WorldPos.Y())
+		n.Bone.WorldPos = mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
+		n.Bone.WorldRotate = n.Bone.LocalRotate
+		n.Bone.WorldScale = n.Bone.LocalScale
+	case TransformNoRotationOrReflection:
+		mat3 := mgl32.Translate2D(parent.WorldPos.X(), parent.WorldPos.Y()).
+			Mul3(mgl32.Scale2D(parent.WorldScale.X(), parent.WorldScale.Y()))
+		n.Bone.WorldPos = mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
+		n.Bone.WorldRotate = n.Bone.LocalRotate
+		n.Bone.WorldScale = Vec2Mul(n.Bone.LocalScale, parent.WorldScale)
+	case TransformNoScale, TransformNoScaleOrReflection:
+		mat3 := mgl32.Translate2D(parent.WorldPos.X(), parent.WorldPos.Y()).
+			Mul3(mgl32.HomogRotate2D(parent.WorldRotate * math.Pi / 180))
+		n.Bone.WorldPos = mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
+		n.Bone.WorldRotate = n.Bone.LocalRotate + parent.WorldRotate
+		n.Bone.WorldScale = n.Bone.LocalScale
+	default:
+		panic(fmt.Sprintf("invalid mode: %v", n.Bone.TransformMode))
+	}
 	n.Bone.Mat3 = mgl32.Translate2D(n.Bone.WorldPos.X(), n.Bone.WorldPos.Y()).
 		Mul3(mgl32.HomogRotate2D(n.Bone.WorldRotate * math.Pi / 180)).
 		Mul3(mgl32.Scale2D(n.Bone.WorldScale.X(), n.Bone.WorldScale.Y()))
+	n.Bone.Modify = false
 	for _, item := range n.Children {
-		item.ApplyMat3()
+		item.updateWorld()
 	}
 }
 
@@ -172,12 +220,11 @@ func (g *Game) Update() error {
 	// 更新数据
 	// 应用动画 都是局部坐标系下的对象或者坐标系无关对象
 	g.AnimController.Update()
-	// 计算出世界坐标 世界旋转 世界缩放
-	g.BoneRoot.Update() // 应用约束前需要先算一遍
+	// 计算出世界坐标 世界旋转 世界缩放 与 世界矩阵
+	g.BoneRoot.Update()
 	// 对世界坐标下的对象应用约束
-	g.BoneRoot.ApplyMat3() // 应用世界矩阵方便后续使用
 	g.ConstraintController.Update()
-	g.BoneRoot.ApplyMat3() // 修改了世界坐标重新计算世界矩阵
+	g.BoneRoot.ApplyModify() // 应用世界坐标的修改
 	sort.Slice(g.OrderSlots, func(i, j int) bool {
 		return g.OrderSlots[i].CurrOrder < g.OrderSlots[j].CurrOrder
 	})

@@ -5,8 +5,8 @@ import (
 )
 
 func main() {
-	atlas := ParseAtlas("res/dyn_illust_249_mlyss/dyn_illust_char_249_mlyss.atlas")
-	skel := ParseSkel("res/dyn_illust_249_mlyss/dyn_illust_char_249_mlyss.skel")
+	atlas := ParseAtlas("res/003_kalts/build_char_003_kalts.atlas")
+	skel := ParseSkel("res/003_kalts/build_char_003_kalts.skel")
 
 	ebiten.SetWindowSize(1280, 720)
 	err := ebiten.RunGame(NewGame(atlas, skel))
