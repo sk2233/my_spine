@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/go-gl/mathgl/mgl32"
+	"math"
 	"time"
 )
 
@@ -19,7 +20,57 @@ func GetIndexByTime(frames []*KeyFrame, curr float32) int {
 	return -1
 }
 
-// TODO 后面可以实现贝塞尔曲线
+func evalX(curve [2]mgl32.Vec2, rate float32) float32 {
+	rate2 := rate * rate
+	rate3 := rate2 * rate
+	invRate := 1 - rate
+	invRate2 := invRate * invRate
+	invRate3 := invRate2 * invRate
+	return rate3*1 + 3*rate2*invRate*curve[1].X() + 3*rate*invRate2*curve[0].X() + invRate3*0
+}
+
+func findX(curve [2]mgl32.Vec2, rate float32) float32 {
+	e := 0.00001
+	start := float32(0.0)
+	stop := float32(1.0)
+	res := float32(0.5)
+	x := evalX(curve, res)
+	for math.Abs(float64(rate-x)) > e {
+		if rate < x {
+			stop = res
+		} else {
+			start = res
+		}
+		res = (stop + start) * 0.5
+		x = evalX(curve, res)
+	}
+	return res
+}
+
+func evalY(curve [2]mgl32.Vec2, rate float32) float32 {
+	rate2 := rate * rate
+	rate3 := rate2 * rate
+	invRate := 1 - rate
+	invRate2 := invRate * invRate
+	invRate3 := invRate2 * invRate
+	return rate3*1 + 3*rate2*invRate*curve[1].Y() + 3*rate*invRate2*curve[0].Y() + invRate3*0
+}
+
+// curve  0~1
+func CurveVal(curve *Curve, rate float32) float32 {
+	switch curve.Type {
+	case CurveLinear:
+		return rate
+	case CurveStepped:
+		return 0
+	case CurveBezier:
+		temp := findX(curve.Data, rate)
+		return evalY(curve.Data, temp)
+	default:
+		panic(fmt.Sprintf("invalid curve type: %v", curve.Type))
+	}
+}
+
 func Lerp(v1 float32, v2 float32, rate float32) float32 {
 	return v1 + (v2-v1)*rate
 }
@@ -65,7 +116,8 @@ func (r *RotateAnimUpdate) Update(curr float32) {
 	} else {
 		pre := r.KeyFrames[idx]
 		next := r.KeyFrames[idx+1]
-		r.Bone.CurrRotate += LerpRotation(pre.Rotate, next.Rotate, (curr-pre.Time)/(next.Time-pre.Time))
+		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
+		r.Bone.CurrRotate += LerpRotation(pre.Rotate, next.Rotate, rate)
 	}
 }
 
@@ -91,7 +143,7 @@ func (t *TranslateAnimUpdate) Update(curr float32) {
 	} else {
 		pre := t.KeyFrames[idx]
 		next := t.KeyFrames[idx+1]
-		rate := (curr - pre.Time) / (next.Time - pre.Time)
+		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
 		t.Bone.CurrPos = t.Bone.CurrPos.Add(mgl32.Vec2{
 			Lerp(pre.Offset.X(), next.Offset.X(), rate),
 			Lerp(pre.Offset.Y(), next.Offset.Y(), rate),
@@ -117,7 +169,7 @@ func (t *ScaleAnimUpdate) Update(curr float32) {
 	} else {
 		pre := t.KeyFrames[idx]
 		next := t.KeyFrames[idx+1]
-		rate := (curr - pre.Time) / (next.Time - pre.Time)
+		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
 		t.Bone.CurrScale = mgl32.Vec2{
 			Lerp(pre.Scale.X(), next.Scale.X(), rate),
 			Lerp(pre.Scale.Y(), next.Scale.Y(), rate),
@@ -153,7 +205,7 @@ func (d *DeformAnimUpdate) Update(curr float32) {
 	} else {
 		pre := d.KeyFrames[idx]
 		next := d.KeyFrames[idx+1]
-		rate := (curr - pre.Time) / (next.Time - pre.Time)
+		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
 		deform := make([]mgl32.Vec2, 0)
 		weightDeform := make([][]mgl32.Vec2, 0)
 		if d.Attachment.Weight {
@@ -214,7 +266,7 @@ func (c *ColorAnimUpdate) Update(curr float32) {
 	} else {
 		pre := c.KeyFrames[idx]
 		next := c.KeyFrames[idx+1]
-		rate := (curr - pre.Time) / (next.Time - pre.Time)
+		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
 		c.Slot.CurrColor = mgl32.Vec4{
 			Lerp(pre.Color[0], next.Color[0], rate),
 			Lerp(pre.Color[1], next.Color[1], rate),

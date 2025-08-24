@@ -34,13 +34,16 @@ type Bone struct {
 	Scale         mgl32.Vec2
 	Shear         mgl32.Vec2
 	Length        float32 // IK 使用的 暂时没用
-	TransformMode uint8
-	SkinRequire   bool // 多皮肤使用的 暂时没用
+	TransformMode uint8   // 继承父节点那些变换属性
+	SkinRequire   bool    // 多皮肤使用的 暂时没用
 	// 运行时数据
-	CurrRotate float32
-	CurrPos    mgl32.Vec2
-	CurrScale  mgl32.Vec2
-	CurrMat3   mgl32.Mat3
+	CurrRotate      float32
+	CurrPos         mgl32.Vec2
+	CurrScale       mgl32.Vec2
+	NormalMat3      mgl32.Mat3 // TransformNormal
+	TranslationMat3 mgl32.Mat3 // TransformOnlyTranslation
+	NoRotateMat3    mgl32.Mat3 // TransformNoRotationOrReflection
+	NoScaleMat3     mgl32.Mat3 // TransformNoScale TransformNoScaleOrReflection
 }
 
 const (

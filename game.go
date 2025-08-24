@@ -26,11 +26,28 @@ func (n *BoneNode) Update() {
 	mat3 := mgl32.Ident3()
 	mat3[4] = -1         // 颠倒上下 其坐标系与 OpenGL 相比是上下颠倒的
 	if n.Parent != nil { // 父节点肯定计算完了
-		mat3 = n.Parent.Bone.CurrMat3
+		switch n.Bone.TransformMode {
+		case TransformNormal:
+			mat3 = n.Parent.Bone.NormalMat3
+		case TransformOnlyTranslation:
+			mat3 = n.Parent.Bone.TranslationMat3
+		case TransformNoRotationOrReflection:
+			mat3 = n.Parent.Bone.NoRotateMat3
+		case TransformNoScale, TransformNoScaleOrReflection:
+			mat3 = n.Parent.Bone.NoScaleMat3
+		default:
+			panic(fmt.Sprintf("unknown transform mode: %v", n.Bone.TransformMode))
+		}
 	}
-	n.Bone.CurrMat3 = mat3.Mul3(mgl32.Translate2D(n.Bone.CurrPos.X(), n.Bone.CurrPos.Y())).
+	// 计算各种子节点可能需要的
+	n.Bone.NormalMat3 = mat3.Mul3(mgl32.Translate2D(n.Bone.CurrPos.X(), n.Bone.CurrPos.Y())).
 		Mul3(mgl32.HomogRotate2D(n.Bone.CurrRotate * math.Pi / 180)).
 		Mul3(mgl32.Scale2D(n.Bone.CurrScale.X(), n.Bone.CurrScale.Y()))
+	n.Bone.TranslationMat3 = mat3.Mul3(mgl32.Translate2D(n.Bone.CurrPos.X(), n.Bone.CurrPos.Y()))
+	n.Bone.NoRotateMat3 = mat3.Mul3(mgl32.Translate2D(n.Bone.CurrPos.X(), n.Bone.CurrPos.Y())).
+		Mul3(mgl32.Scale2D(n.Bone.CurrScale.X(), n.Bone.CurrScale.Y()))
+	n.Bone.NoScaleMat3 = mat3.Mul3(mgl32.Translate2D(n.Bone.CurrPos.X(), n.Bone.CurrPos.Y())).
+		Mul3(mgl32.HomogRotate2D(n.Bone.CurrRotate * math.Pi / 180))
 	for _, child := range n.Children {
 		child.Update()
 	}
@@ -156,8 +173,8 @@ func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
 		return // 无效值
 	}
 	item := g.Attachments[AttachmentKey(slot.CurrAttachment, slot.Index)]
-	if item == nil || item.Image == nil {
-		return // 非绘制元素
+	if item.Image == nil {
+		return // 无需绘制
 	}
 	bound := item.Image.Bounds()
 	w, h := float32(bound.Dx()), float32(bound.Dy())
@@ -167,7 +184,7 @@ func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
 	currClr := Vec4Mul(slot.CurrColor, slot.DarkColor)
 	// 不同组件的展示是 动画控制的，默认会全部展示
 	if attachment.Type == AttachmentRegion {
-		mat3 := g.Skel.Bones[slot.Bone].CurrMat3.Mul3(mgl32.Translate2D(attachment.Pos.X(), attachment.Pos.Y())).
+		mat3 := g.Skel.Bones[slot.Bone].NormalMat3.Mul3(mgl32.Translate2D(attachment.Pos.X(), attachment.Pos.Y())).
 			Mul3(mgl32.HomogRotate2D(attachment.Rotate * math.Pi / 180)).
 			Mul3(mgl32.Scale2D(attachment.Scale.X(), attachment.Scale.Y()))
 		v0 := mat3.Mul3x1(mgl32.Vec3{-w / 2, h / 2, 1}).Vec2()
@@ -186,14 +203,14 @@ func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
 				res := mgl32.Vec2{}
 				wv := attachment.CurrWeightVertices[i]
 				for _, vec := range wv {
-					mat3 := g.Skel.Bones[vec.Bone].CurrMat3
+					mat3 := g.Skel.Bones[vec.Bone].NormalMat3
 					temp := mat3.Mul3x1(vec.Offset.Vec3(1)).Vec2()
 					res = res.Add(temp.Mul(vec.Weight))
 				}
 				vertices = append(vertices, NewVertex(res.X(), res.Y(), uv.X()*w, uv.Y()*h))
 			}
 		} else {
-			mat3 := g.Skel.Bones[slot.Bone].CurrMat3
+			mat3 := g.Skel.Bones[slot.Bone].NormalMat3
 			for i, uv := range attachment.UVs {
 				vec := mat3.Mul3x1(attachment.CurrVertices[i].Vec3(1)).Vec2()
 				vertices = append(vertices, NewVertex(vec.X(), vec.Y(), uv.X()*w, uv.Y()*h))
@@ -202,14 +219,26 @@ func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
 		indices = attachment.Indices
 		currClr = Vec4Mul(currClr, attachment.Color)
 	} else if attachment.Type == AttachmentClip {
-		//mat3 := g.Skel.Bones[slot.Bone].CurrMat3 // TODO 剪切蒙版实现
-		//for _, item := range attachment.CurrVertices {
-		//	vec := mat3.Mul3x1(item.Vec3(1)).Vec2()
-		//	vertices = append(vertices, NewVertex(vec.X(), vec.Y(), 0, 0))
-		//}
-		//for i := 2; i < len(vertices); i++ {
-		//	indices = append(indices, 0, uint16(i-1), uint16(i))
-		//}
+		if attachment.Weight { // 不需要 UV
+			for _, wv := range attachment.CurrWeightVertices {
+				res := mgl32.Vec2{}
+				for _, vec := range wv {
+					mat3 := g.Skel.Bones[vec.Bone].NormalMat3
+					temp := mat3.Mul3x1(vec.Offset.Vec3(1)).Vec2()
+					res = res.Add(temp.Mul(vec.Weight))
+				}
+				vertices = append(vertices, NewVertex(res.X(), res.Y(), 0, 0))
+			}
+		} else {
+			mat3 := g.Skel.Bones[slot.Bone].NormalMat3
+			for _, vertex := range attachment.CurrVertices {
+				vec := mat3.Mul3x1(vertex.Vec3(1)).Vec2()
+				vertices = append(vertices, NewVertex(vec.X(), vec.Y(), 0, 0))
+			}
+		}
+		for i := 2; i < len(vertices); i++ {
+			indices = append(indices, 0, uint16(i-1), uint16(i))
+		}
 	} else {
 		panic("unknown attachment type")
 	}
