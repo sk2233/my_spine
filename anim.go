@@ -280,6 +280,42 @@ func NewColorAnimUpdate(slot *Slot, keyFrames []*KeyFrame) *ColorAnimUpdate {
 	return &ColorAnimUpdate{Slot: slot, KeyFrames: keyFrames}
 }
 
+type TwoColorAnimUpdate struct {
+	Slot      *Slot
+	KeyFrames []*KeyFrame
+}
+
+func (c *TwoColorAnimUpdate) Update(curr float32) {
+	idx := GetIndexByTime(c.KeyFrames, curr)
+	if idx < 0 {
+		c.Slot.CurrColor = c.KeyFrames[0].Color
+		c.Slot.CurrDarkColor = c.KeyFrames[0].DarkColor
+	} else if idx+1 >= len(c.KeyFrames) {
+		c.Slot.CurrColor = c.KeyFrames[idx].Color
+		c.Slot.CurrDarkColor = c.KeyFrames[idx].DarkColor
+	} else {
+		pre := c.KeyFrames[idx]
+		next := c.KeyFrames[idx+1]
+		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
+		c.Slot.CurrColor = mgl32.Vec4{
+			Lerp(pre.Color[0], next.Color[0], rate),
+			Lerp(pre.Color[1], next.Color[1], rate),
+			Lerp(pre.Color[2], next.Color[2], rate),
+			Lerp(pre.Color[3], next.Color[3], rate),
+		}
+		c.Slot.CurrDarkColor = mgl32.Vec4{
+			Lerp(pre.DarkColor[0], next.DarkColor[0], rate),
+			Lerp(pre.DarkColor[1], next.DarkColor[1], rate),
+			Lerp(pre.DarkColor[2], next.DarkColor[2], rate),
+			Lerp(pre.DarkColor[3], next.DarkColor[3], rate),
+		}
+	}
+}
+
+func NewTwoColorAnimUpdate(slot *Slot, keyFrames []*KeyFrame) *TwoColorAnimUpdate {
+	return &TwoColorAnimUpdate{Slot: slot, KeyFrames: keyFrames}
+}
+
 type AnimController struct {
 	AnimName    string
 	Duration    float32
@@ -324,6 +360,8 @@ func NewAnimController(anim *Animation, bones []*Bone, slots []*Slot, attachment
 			updates = append(updates, NewDrawOrderAnimUpdate(slots, timeline.KeyFrames))
 		case TimelineColor:
 			updates = append(updates, NewColorAnimUpdate(slots[timeline.Slot], timeline.KeyFrames))
+		case TimelineTwoColor:
+			updates = append(updates, NewTwoColorAnimUpdate(slots[timeline.Slot], timeline.KeyFrames))
 		case TimelineShear:
 			// 先不处理斜切
 		default:

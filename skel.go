@@ -90,9 +90,9 @@ type Slot struct {
 	BlendMode        uint8
 	Index            int
 	// 运行时值
-	CurrOrder      int
-	CurrAttachment string
-	CurrColor      mgl32.Vec4
+	CurrOrder                int
+	CurrAttachment           string
+	CurrColor, CurrDarkColor mgl32.Vec4
 }
 
 type WeightVertex struct {
@@ -162,6 +162,8 @@ type KeyFrame struct {
 	Attachment string
 	// TimelineColor
 	Color mgl32.Vec4
+	// TimelineTwoColor
+	DarkColor mgl32.Vec4
 	// TimelineRotate
 	Rotate float32
 	// TimelineTranslate
@@ -181,6 +183,7 @@ type KeyFrame struct {
 const (
 	SlotAttachment = 0
 	SlotColor      = 1
+	SlotTwoColor   = 2
 )
 
 const (
@@ -188,6 +191,12 @@ const (
 	BoneTranslate = 1
 	BoneScale     = 2
 	BoneShear     = 3
+)
+
+const (
+	PathPosition = 0
+	PathSpace    = 1
+	PathMix      = 2
 )
 
 const (
@@ -289,6 +298,20 @@ func parseAnimation(reader io.Reader, strings []string, slots []*Slot, skin *Ski
 						Time:  readF4(reader),
 						Color: readClr(reader),
 					}
+					if k < fCount-1 {
+						keyFrame.Curve = readCurve(reader)
+					}
+					temp.KeyFrames = append(temp.KeyFrames, keyFrame)
+				}
+			case SlotTwoColor:
+				temp.Type = TimelineTwoColor
+				for k := 0; k < fCount; k++ {
+					keyFrame := &KeyFrame{
+						Time:      readF4(reader),
+						Color:     readClr(reader),
+						DarkColor: readClr(reader),
+					}
+					keyFrame.DarkColor[3] = 1
 					if k < fCount-1 {
 						keyFrame.Curve = readCurve(reader)
 					}
@@ -406,8 +429,36 @@ func parseAnimation(reader io.Reader, strings []string, slots []*Slot, skin *Ski
 	}
 	// Path constraint skip
 	count = readInt(reader)
-	if count > 0 {
-		panic(fmt.Errorf("invalid timeline count: %v", count))
+	for i := 0; i < count; i++ {
+		index := readInt(reader)
+		tCount := readInt(reader)
+		for j := 0; j < tCount; j++ {
+			type0 := readU8(reader)
+			fCount := readInt(reader)
+			switch type0 {
+			case PathPosition, PathSpace:
+				for k := 0; k < fCount; k++ {
+					time := readF4(reader)
+					position := readF4(reader)
+					if k < fCount-1 {
+						readCurve(reader)
+					}
+					Use(time, position)
+				}
+			case PathMix:
+				for k := 0; k < fCount; k++ {
+					time := readF4(reader)
+					rotate := readF4(reader)
+					translate := readF4(reader)
+					if k < fCount-1 {
+						readCurve(reader)
+					}
+					Use(time, rotate, translate)
+				}
+			}
+			Use(fCount)
+		}
+		Use(index, tCount)
 	}
 	// Deform
 	attachments := make(map[string]*Attachment)

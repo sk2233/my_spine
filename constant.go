@@ -1,5 +1,5 @@
 package main
 
 const (
-	BasePath = "/Users/wepie/GolandProjects/my_spine/"
+	BasePath = "/Users/wepie/Documents/go/my_spine/"
 )

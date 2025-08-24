@@ -76,7 +76,7 @@ type Game struct {
 }
 
 func NewGame(atlas *Atlas, skel *Skel) *Game {
-	res := &Game{Atlas: atlas, Skel: skel, Pos: mgl32.Vec2{640, -550}, AnimIndex: 0}
+	res := &Game{Atlas: atlas, Skel: skel, Pos: mgl32.Vec2{640, -721}, AnimIndex: 0}
 	res.Image = res.loadImage()
 	res.BoneRoot = res.calculateBoneRoot()
 	res.OrderSlots = res.calculateOrderSlot()
@@ -112,6 +112,7 @@ func (g *Game) Update() error {
 		slot.CurrOrder = i
 		slot.CurrAttachment = slot.Attachment
 		slot.CurrColor = slot.Color
+		slot.CurrDarkColor = slot.DarkColor
 	}
 	for _, bone := range g.Skel.Bones {
 		bone.CurrRotate = bone.Rotate
@@ -140,7 +141,7 @@ func (g *Game) Update() error {
 	// 更新数据
 	g.AnimController.Update()
 	g.BoneRoot.Bone.CurrPos = g.Pos
-	g.BoneRoot.Bone.CurrScale = mgl32.Vec2{0.5, 0.5}
+	g.BoneRoot.Bone.CurrScale = mgl32.Vec2{0.35, 0.35}
 	g.BoneRoot.Update()
 	sort.Slice(g.OrderSlots, func(i, j int) bool {
 		return g.OrderSlots[i].CurrOrder < g.OrderSlots[j].CurrOrder
@@ -181,7 +182,7 @@ func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
 	vertices := make([]ebiten.Vertex, 0)
 	indices := make([]uint16, 0)
 	attachment := item.Attachment
-	currClr := Vec4Mul(slot.CurrColor, slot.DarkColor)
+	currClr := Vec4Mul(slot.CurrColor, slot.CurrDarkColor)
 	// 不同组件的展示是 动画控制的，默认会全部展示
 	if attachment.Type == AttachmentRegion {
 		mat3 := g.Skel.Bones[slot.Bone].NormalMat3.Mul3(mgl32.Translate2D(attachment.Pos.X(), attachment.Pos.Y())).
