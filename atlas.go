@@ -58,7 +58,7 @@ func parseAtlasItem(items []string) *AtlasItem {
 	xy := parseIntList(items[2], "xy")
 	size := parseIntList(items[3], "size")
 	orig := parseIntList(items[4], "orig")
-	if rotate != 0 {
+	if rotate == 90 || rotate == 270 {
 		size[0], size[1] = size[1], size[0]
 		orig[0], orig[1] = orig[1], orig[0]
 	}

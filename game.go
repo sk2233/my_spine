@@ -354,7 +354,7 @@ func rotate90(img *image.RGBA) *image.RGBA {
 }
 
 // rotate180 对图像进行180度旋转，返回旋转后的图像
-func rotate180(src *image.RGBA) *image.RGBA {
+func rotate180(src image.Image) image.Image {
 	// 获取原始图像的尺寸
 	bound := src.Bounds()
 	width, height := bound.Dx(), bound.Dy()
