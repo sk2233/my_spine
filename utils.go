@@ -51,16 +51,18 @@ func Vec4Lerp(v1 mgl32.Vec4, v2 mgl32.Vec4, rate float32) mgl32.Vec4 {
 }
 
 // 旋转角度需要特殊处理
-func LerpRotation(r1 float32, r2 float32, rate float32) float32 {
-	delta := r2 - r1
-	// 修正差值，确保在[-180, 180]范围内（取最短路径）
-	for delta < -180 {
-		delta += 360
+func LerpRotate(r1 float32, r2 float32, rate float32) float32 {
+	return r1 + AdjustRotate(r2-r1)*rate
+}
+
+func AdjustRotate(val float32) float32 {
+	for val < -180 { // -180 ~ 180
+		val += 360
 	}
-	for delta > 180 {
-		delta -= 360
+	for val > 180 {
+		val -= 360
 	}
-	return r1 + delta*rate
+	return val
 }
 
 func Rotate(angle float32) mgl32.Mat2 {

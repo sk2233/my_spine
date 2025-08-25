@@ -34,7 +34,7 @@ func (c *ConstraintController) updateTransformConstraints() {
 			bone := c.Bones[idx]
 			if item.CurrRotateMix > 0 {
 				oldRotate := GetRotate(bone.Mat2)
-				temp := LerpRotation(oldRotate, rotate, item.CurrRotateMix) - oldRotate
+				temp := LerpRotate(oldRotate, rotate, item.CurrRotateMix) - oldRotate
 				bone.Mat2 = Rotate(temp).Mul2(bone.Mat2)
 				bone.Modify = true
 			}
@@ -92,7 +92,7 @@ func (c *ConstraintController) updatePathConstraints() {
 			pos, rotate := c.calculatePosAndRotate(points, lens, allLen*rate)
 			if item.RotateMix > 0 {
 				oldRotate := GetRotate(bone.Mat2)
-				rotate = LerpRotation(oldRotate, rotate, item.RotateMix) - oldRotate
+				rotate = LerpRotate(oldRotate, rotate, item.RotateMix) - oldRotate
 				bone.Mat2 = Rotate(rotate).Mul2(bone.Mat2)
 				bone.Modify = true
 			}

@@ -94,14 +94,14 @@ type RotateAnimUpdate struct {
 func (r *RotateAnimUpdate) Update(curr float32) {
 	idx := GetIndexByTime(r.KeyFrames, curr)
 	if idx < 0 {
-		r.Bone.LocalRotate = r.Bone.Rotate + r.KeyFrames[0].Rotate
+		r.Bone.LocalRotate = AdjustRotate(r.Bone.Rotate + r.KeyFrames[0].Rotate)
 	} else if idx+1 >= len(r.KeyFrames) {
-		r.Bone.LocalRotate = r.Bone.Rotate + r.KeyFrames[idx].Rotate
+		r.Bone.LocalRotate = AdjustRotate(r.Bone.Rotate + r.KeyFrames[idx].Rotate)
 	} else {
 		pre := r.KeyFrames[idx]
 		next := r.KeyFrames[idx+1]
 		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
-		r.Bone.LocalRotate = r.Bone.Rotate + LerpRotation(pre.Rotate, next.Rotate, rate)
+		r.Bone.LocalRotate = AdjustRotate(r.Bone.Rotate + LerpRotate(pre.Rotate, next.Rotate, rate))
 	}
 }
 

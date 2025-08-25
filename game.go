@@ -35,10 +35,10 @@ func (n *BoneNode) Update() {
 		case TransformOnlyTranslation:
 			n.Bone.Mat2 = Rotate(n.Bone.LocalRotate).Mul2(Scale(n.Bone.LocalScale))
 		case TransformNoRotationOrReflection:
-			rotate := GetRotate(n.Bone.Mat2) // 移除父对象的旋转量
+			rotate := GetRotate(parent.Mat2) // 移除父对象的旋转量
 			n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(n.Bone.LocalRotate - rotate)).Mul2(Scale(n.Bone.LocalScale))
 		case TransformNoScale, TransformNoScaleOrReflection:
-			scale := GetScale(n.Bone.Mat2) // 移除父对象的缩放量  TODO 与标注实现不一致
+			scale := GetScale(parent.Mat2) // 移除父对象的缩放量  TODO 与标注实现不一致
 			n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(Vec2Div(n.Bone.LocalScale, scale)))
 		default:
 			panic(fmt.Sprintf("invalid mode: %v", n.Bone.TransformMode))
@@ -71,10 +71,10 @@ func (n *BoneNode) updateWorld() {
 	case TransformOnlyTranslation:
 		n.Bone.Mat2 = Rotate(n.Bone.LocalRotate).Mul2(Scale(n.Bone.LocalScale))
 	case TransformNoRotationOrReflection:
-		rotate := GetRotate(n.Bone.Mat2) // 移除父对象的旋转量
+		rotate := GetRotate(parent.Mat2) // 移除父对象的旋转量
 		n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(n.Bone.LocalRotate - rotate)).Mul2(Scale(n.Bone.LocalScale))
 	case TransformNoScale, TransformNoScaleOrReflection:
-		scale := GetScale(n.Bone.Mat2) // 移除父对象的缩放量  TODO 与标注实现不一致
+		scale := GetScale(parent.Mat2) // 移除父对象的缩放量  TODO 与标注实现不一致
 		n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(Vec2Div(n.Bone.LocalScale, scale)))
 	default:
 		panic(fmt.Sprintf("invalid mode: %v", n.Bone.TransformMode))
@@ -186,8 +186,8 @@ func (g *Game) Update() error {
 	// 计算出世界坐标 世界旋转 世界缩放 与 世界矩阵
 	g.BoneRoot.Update()
 	// 对世界坐标下的对象应用约束
-	g.ConstraintController.Update()
-	g.BoneRoot.ApplyModify() // 应用世界坐标的修改
+	//g.ConstraintController.Update()
+	//g.BoneRoot.ApplyModify() // 应用世界坐标的修改
 	sort.Slice(g.OrderSlots, func(i, j int) bool {
 		return g.OrderSlots[i].CurrOrder < g.OrderSlots[j].CurrOrder
 	})
@@ -353,6 +353,22 @@ func rotate90(img *image.RGBA) *image.RGBA {
 	return res
 }
 
+// rotate180 对图像进行180度旋转，返回旋转后的图像
+func rotate180(src *image.RGBA) *image.RGBA {
+	// 获取原始图像的尺寸
+	bound := src.Bounds()
+	width, height := bound.Dx(), bound.Dy()
+	// 创建目标图像（RGBA格式，支持读写像素）
+	dst := image.NewRGBA(bound)
+	// 遍历原始图像的每个像素
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			dst.Set(width-1-x, height-1-y, src.At(x, y))
+		}
+	}
+	return dst
+}
+
 func rotate270(img *image.RGBA) *image.RGBA {
 	// 獲取原始圖片的邊界
 	bound := img.Bounds()
@@ -391,6 +407,8 @@ func (g *Game) createImage(path string) *ebiten.Image {
 				return ebiten.NewImageFromImage(res)
 			case 90:
 				return ebiten.NewImageFromImage(rotate90(res))
+			case 180:
+				return ebiten.NewImageFromImage(rotate180(res))
 			case 270:
 				return ebiten.NewImageFromImage(rotate270(res))
 			default:
