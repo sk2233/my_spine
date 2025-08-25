@@ -38,7 +38,7 @@ func (n *BoneNode) Update() {
 			rotate := GetRotate(parent.Mat2) // 移除父对象的旋转量
 			n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(n.Bone.LocalRotate - rotate)).Mul2(Scale(n.Bone.LocalScale))
 		case TransformNoScale, TransformNoScaleOrReflection:
-			scale := GetScale(parent.Mat2) // 移除父对象的缩放量  TODO 与标注实现不一致
+			scale := GetScale(parent.Mat2) // 移除父对象的缩放量
 			n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(Vec2Div(n.Bone.LocalScale, scale)))
 		default:
 			panic(fmt.Sprintf("invalid mode: %v", n.Bone.TransformMode))

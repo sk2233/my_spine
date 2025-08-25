@@ -56,11 +56,11 @@ func LerpRotate(r1 float32, r2 float32, rate float32) float32 {
 }
 
 func AdjustRotate(val float32) float32 {
-	for val < -180 { // -180 ~ 180
-		val += 360
-	}
-	for val > 180 {
+	for val > 180 { // -180 ~ 180
 		val -= 360
+	}
+	for val < -180 {
+		val += 360
 	}
 	return val
 }
