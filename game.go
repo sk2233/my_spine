@@ -6,7 +6,6 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
-	"math"
 	"os"
 	"sort"
 
@@ -25,32 +24,26 @@ type BoneNode struct {
 
 func (n *BoneNode) Update() {
 	if n.Parent == nil { // 没有父节点局部坐标就是世界坐标
-		n.Bone.WorldRotate = n.Bone.LocalRotate
 		n.Bone.WorldPos = n.Bone.LocalPos
-		n.Bone.WorldScale = n.Bone.LocalScale
+		n.Bone.Mat2 = Rotate(n.Bone.LocalRotate).Mul2(Scale(n.Bone.LocalScale))
 	} else {
 		parent := n.Parent.Bone // 坐标计算毕竟是在父坐标系还是会受影响的
-		n.Bone.WorldPos = parent.Mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
+		n.Bone.WorldPos = parent.Mat2.Mul2x1(n.Bone.LocalPos).Add(parent.WorldPos)
 		switch n.Bone.TransformMode {
 		case TransformNormal:
-			n.Bone.WorldRotate = n.Bone.LocalRotate + parent.WorldRotate
-			n.Bone.WorldScale = Vec2Mul(n.Bone.LocalScale, parent.WorldScale)
+			n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
 		case TransformOnlyTranslation:
-			n.Bone.WorldRotate = n.Bone.LocalRotate
-			n.Bone.WorldScale = n.Bone.LocalScale
+			n.Bone.Mat2 = Rotate(n.Bone.LocalRotate).Mul2(Scale(n.Bone.LocalScale))
 		case TransformNoRotationOrReflection:
-			n.Bone.WorldRotate = n.Bone.LocalRotate
-			n.Bone.WorldScale = Vec2Mul(n.Bone.LocalScale, parent.WorldScale)
+			rotate := GetRotate(n.Bone.Mat2) // 移除父对象的旋转量
+			n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(n.Bone.LocalRotate - rotate)).Mul2(Scale(n.Bone.LocalScale))
 		case TransformNoScale, TransformNoScaleOrReflection:
-			n.Bone.WorldRotate = n.Bone.LocalRotate + parent.WorldRotate
-			n.Bone.WorldScale = n.Bone.LocalScale
+			scale := GetScale(n.Bone.Mat2) // 移除父对象的缩放量  TODO 与标注实现不一致
+			n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(Vec2Div(n.Bone.LocalScale, scale)))
 		default:
 			panic(fmt.Sprintf("invalid mode: %v", n.Bone.TransformMode))
-		}
+		} // 参考原项目必须使用矩阵变换，非等比缩放影响必须使用矩阵累加
 	}
-	n.Bone.Mat3 = mgl32.Translate2D(n.Bone.WorldPos.X(), n.Bone.WorldPos.Y()).
-		Mul3(mgl32.HomogRotate2D(n.Bone.WorldRotate * math.Pi / 180)).
-		Mul3(mgl32.Scale2D(n.Bone.WorldScale.X(), n.Bone.WorldScale.Y()))
 	for _, child := range n.Children {
 		child.Update()
 	}
@@ -58,12 +51,9 @@ func (n *BoneNode) Update() {
 
 func (n *BoneNode) ApplyModify() {
 	if n.Bone.Modify {
-		n.Bone.Mat3 = mgl32.Translate2D(n.Bone.WorldPos.X(), n.Bone.WorldPos.Y()).
-			Mul3(mgl32.HomogRotate2D(n.Bone.WorldRotate * math.Pi / 180)).
-			Mul3(mgl32.Scale2D(n.Bone.WorldScale.X(), n.Bone.WorldScale.Y()))
 		n.Bone.Modify = false // 源头节点只更新 Mat3 即可
 		for _, item := range n.Children {
-			item.updateWorld() // 会清楚子节点的 Modify
+			item.updateWorld() // 会清除子节点的 Modify
 		}
 	} else { // TODO 父子节点同时被修改怎么办？ 父节点递归更新会丢掉子节点的更新
 		for _, item := range n.Children {
@@ -73,27 +63,22 @@ func (n *BoneNode) ApplyModify() {
 }
 
 func (n *BoneNode) updateWorld() {
-	parent := n.Parent.Bone // 肯定有父节点
-	n.Bone.WorldPos = parent.Mat3.Mul3x1(n.Bone.LocalPos.Vec3(1)).Vec2()
+	parent := n.Parent.Bone // 坐标计算毕竟是在父坐标系还是会受影响的
+	n.Bone.WorldPos = parent.Mat2.Mul2x1(n.Bone.LocalPos).Add(parent.WorldPos)
 	switch n.Bone.TransformMode {
 	case TransformNormal:
-		n.Bone.WorldRotate = n.Bone.LocalRotate + parent.WorldRotate
-		n.Bone.WorldScale = Vec2Mul(n.Bone.LocalScale, parent.WorldScale)
+		n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
 	case TransformOnlyTranslation:
-		n.Bone.WorldRotate = n.Bone.LocalRotate
-		n.Bone.WorldScale = n.Bone.LocalScale
+		n.Bone.Mat2 = Rotate(n.Bone.LocalRotate).Mul2(Scale(n.Bone.LocalScale))
 	case TransformNoRotationOrReflection:
-		n.Bone.WorldRotate = n.Bone.LocalRotate
-		n.Bone.WorldScale = Vec2Mul(n.Bone.LocalScale, parent.WorldScale)
+		rotate := GetRotate(n.Bone.Mat2) // 移除父对象的旋转量
+		n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(n.Bone.LocalRotate - rotate)).Mul2(Scale(n.Bone.LocalScale))
 	case TransformNoScale, TransformNoScaleOrReflection:
-		n.Bone.WorldRotate = n.Bone.LocalRotate + parent.WorldRotate
-		n.Bone.WorldScale = n.Bone.LocalScale
+		scale := GetScale(n.Bone.Mat2) // 移除父对象的缩放量  TODO 与标注实现不一致
+		n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(Vec2Div(n.Bone.LocalScale, scale)))
 	default:
 		panic(fmt.Sprintf("invalid mode: %v", n.Bone.TransformMode))
 	}
-	n.Bone.Mat3 = mgl32.Translate2D(n.Bone.WorldPos.X(), n.Bone.WorldPos.Y()).
-		Mul3(mgl32.HomogRotate2D(n.Bone.WorldRotate * math.Pi / 180)).
-		Mul3(mgl32.Scale2D(n.Bone.WorldScale.X(), n.Bone.WorldScale.Y()))
 	n.Bone.Modify = false
 	for _, item := range n.Children {
 		item.updateWorld()
@@ -245,13 +230,13 @@ func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
 	currClr := Vec4Mul(slot.CurrColor, slot.CurrDarkColor)
 	// 不同组件的展示是 动画控制的，默认会全部展示
 	if attachment.Type == AttachmentRegion {
-		mat3 := g.Skel.Bones[slot.Bone].Mat3.Mul3(mgl32.Translate2D(attachment.Pos.X(), attachment.Pos.Y())).
-			Mul3(mgl32.HomogRotate2D(attachment.Rotate * math.Pi / 180)).
-			Mul3(mgl32.Scale2D(attachment.Scale.X(), attachment.Scale.Y()))
-		v0 := mat3.Mul3x1(mgl32.Vec3{-w / 2, h / 2, 1}).Vec2()
-		v1 := mat3.Mul3x1(mgl32.Vec3{w / 2, h / 2, 1}).Vec2()
-		v2 := mat3.Mul3x1(mgl32.Vec3{w / 2, -h / 2, 1}).Vec2()
-		v3 := mat3.Mul3x1(mgl32.Vec3{-w / 2, -h / 2, 1}).Vec2()
+		bone := g.Skel.Bones[slot.Bone]
+		worldPos := bone.Mat2.Mul2x1(attachment.Pos).Add(bone.WorldPos)
+		mat2 := bone.Mat2.Mul2(Rotate(attachment.Rotate)).Mul2(Scale(attachment.Scale))
+		v0 := mat2.Mul2x1(mgl32.Vec2{-w / 2, h / 2}).Add(worldPos)
+		v1 := mat2.Mul2x1(mgl32.Vec2{w / 2, h / 2}).Add(worldPos)
+		v2 := mat2.Mul2x1(mgl32.Vec2{w / 2, -h / 2}).Add(worldPos)
+		v3 := mat2.Mul2x1(mgl32.Vec2{-w / 2, -h / 2}).Add(worldPos)
 		vertices = append(vertices, NewVertex(v0.X(), v0.Y(), 0, 0))
 		vertices = append(vertices, NewVertex(v1.X(), v1.Y(), w, 0))
 		vertices = append(vertices, NewVertex(v2.X(), v2.Y(), w, h))
@@ -262,18 +247,17 @@ func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
 		if attachment.Weight {
 			for i, uv := range attachment.UVs {
 				res := mgl32.Vec2{}
-				wv := attachment.CurrWeightVertices[i]
-				for _, vec := range wv {
-					mat3 := g.Skel.Bones[vec.Bone].Mat3
-					temp := mat3.Mul3x1(vec.Offset.Vec3(1)).Vec2()
+				for _, vec := range attachment.CurrWeightVertices[i] {
+					bone := g.Skel.Bones[vec.Bone]
+					temp := bone.Mat2.Mul2x1(vec.Offset).Add(bone.WorldPos)
 					res = res.Add(temp.Mul(vec.Weight))
 				}
 				vertices = append(vertices, NewVertex(res.X(), res.Y(), uv.X()*w, uv.Y()*h))
 			}
 		} else {
-			mat3 := g.Skel.Bones[slot.Bone].Mat3
+			bone := g.Skel.Bones[slot.Bone]
 			for i, uv := range attachment.UVs {
-				vec := mat3.Mul3x1(attachment.CurrVertices[i].Vec3(1)).Vec2()
+				vec := bone.Mat2.Mul2x1(attachment.CurrVertices[i]).Add(bone.WorldPos)
 				vertices = append(vertices, NewVertex(vec.X(), vec.Y(), uv.X()*w, uv.Y()*h))
 			}
 		}
@@ -284,16 +268,16 @@ func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
 			for _, wv := range attachment.CurrWeightVertices {
 				res := mgl32.Vec2{}
 				for _, vec := range wv {
-					mat3 := g.Skel.Bones[vec.Bone].Mat3
-					temp := mat3.Mul3x1(vec.Offset.Vec3(1)).Vec2()
+					bone := g.Skel.Bones[vec.Bone]
+					temp := bone.Mat2.Mul2x1(vec.Offset).Add(bone.WorldPos)
 					res = res.Add(temp.Mul(vec.Weight))
 				}
 				vertices = append(vertices, NewVertex(res.X(), res.Y(), 0, 0))
 			}
 		} else {
-			mat3 := g.Skel.Bones[slot.Bone].Mat3
+			bone := g.Skel.Bones[slot.Bone]
 			for _, vertex := range attachment.CurrVertices {
-				vec := mat3.Mul3x1(vertex.Vec3(1)).Vec2()
+				vec := bone.Mat2.Mul2x1(vertex).Add(bone.WorldPos)
 				vertices = append(vertices, NewVertex(vec.X(), vec.Y(), 0, 0))
 			}
 		}
@@ -402,12 +386,16 @@ func (g *Game) createImage(path string) *ebiten.Image {
 			res := image.NewRGBA(image.Rect(0, 0, item.OrigW, item.OrigH))
 			draw.Draw(res, image.Rect(item.OrigX, item.OrigY, item.OrigX+item.W, item.OrigY+item.H),
 				g.Image, image.Pt(item.X, item.Y), draw.Over)
-			if item.Rotate == 90 {
-				res = rotate90(res)
-			} else if item.Rotate == 270 {
-				res = rotate270(res)
+			switch item.Rotate {
+			case 0:
+				return ebiten.NewImageFromImage(res)
+			case 90:
+				return ebiten.NewImageFromImage(rotate90(res))
+			case 270:
+				return ebiten.NewImageFromImage(rotate270(res))
+			default:
+				panic(fmt.Sprintf("unknown rotate %d", item.Rotate))
 			}
-			return ebiten.NewImageFromImage(res)
 		}
 	}
 	panic(fmt.Sprintf("image %s not found", path))

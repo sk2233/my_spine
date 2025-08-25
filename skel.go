@@ -35,17 +35,22 @@ type Bone struct {
 	Shear         mgl32.Vec2
 	Length        float32 // IK 使用的 暂时没用
 	TransformMode uint8   // 继承父节点那些变换属性
-	SkinRequire   bool    // 多皮肤使用的 暂时没用
+	SkinRequire   bool    // 多皮肤使用的
 	// 运行时数据  Local
 	LocalRotate float32
 	LocalPos    mgl32.Vec2
 	LocalScale  mgl32.Vec2
 	// World
-	WorldRotate float32
-	WorldPos    mgl32.Vec2
-	WorldScale  mgl32.Vec2
-	Mat3        mgl32.Mat3 // 世界变换矩阵
-	Modify      bool       // 标记世界坐标被修改过，需要重新递归计算
+	WorldPos mgl32.Vec2
+	/*
+			Sx*cos , -Sy*sin
+			Sx*sin , Sy*cos
+			角度提取 tan = Sx*sin / Sx*cos
+			缩放提取 Sx = sqrt((Sx*cos)^2 + (Sx*sin)^2)
+		            Sy = sqrt((-Sy*sin)^2 + (Sy*cos)^2)
+	*/
+	Mat2   mgl32.Mat2 // 世界变换矩阵
+	Modify bool       // 标记世界坐标被修改过，需要重新递归计算
 }
 
 const (

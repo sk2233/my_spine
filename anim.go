@@ -72,23 +72,6 @@ func CurveVal(curve *Curve, rate float32) float32 {
 	}
 }
 
-func Lerp(v1 float32, v2 float32, rate float32) float32 {
-	return v1 + (v2-v1)*rate
-}
-
-// 旋转角度需要特殊处理
-func LerpRotation(r1 float32, r2 float32, rate float32) float32 {
-	delta := r2 - r1
-	// 修正差值，确保在[-180, 180]范围内（取最短路径）
-	for delta < -180 {
-		delta += 360
-	}
-	for delta > 180 {
-		delta -= 360
-	}
-	return r1 + delta*rate
-}
-
 type AttachmentAnimUpdate struct {
 	Slot      *Slot
 	KeyFrames []*KeyFrame // 至少 1 个
@@ -145,10 +128,7 @@ func (t *TranslateAnimUpdate) Update(curr float32) {
 		pre := t.KeyFrames[idx]
 		next := t.KeyFrames[idx+1]
 		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
-		t.Bone.LocalPos = t.Bone.Pos.Add(mgl32.Vec2{
-			Lerp(pre.Offset.X(), next.Offset.X(), rate),
-			Lerp(pre.Offset.Y(), next.Offset.Y(), rate),
-		})
+		t.Bone.LocalPos = t.Bone.Pos.Add(Vec2Lerp(pre.Offset, next.Offset, rate))
 	}
 }
 
@@ -171,10 +151,7 @@ func (t *ScaleAnimUpdate) Update(curr float32) {
 		pre := t.KeyFrames[idx]
 		next := t.KeyFrames[idx+1]
 		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
-		t.Bone.LocalScale = Vec2Mul(t.Bone.Scale, mgl32.Vec2{
-			Lerp(pre.Scale.X(), next.Scale.X(), rate),
-			Lerp(pre.Scale.Y(), next.Scale.Y(), rate),
-		})
+		t.Bone.LocalScale = Vec2Mul(t.Bone.Scale, Vec2Lerp(pre.Scale, next.Scale, rate))
 	}
 }
 
@@ -213,19 +190,13 @@ func (d *DeformAnimUpdate) Update(curr float32) {
 			for i, items := range pre.WeightDeform {
 				temp := make([]mgl32.Vec2, 0)
 				for j, item := range items {
-					temp = append(temp, mgl32.Vec2{
-						Lerp(item.X(), next.WeightDeform[i][j].X(), rate),
-						Lerp(item.Y(), next.WeightDeform[i][j].Y(), rate),
-					})
+					temp = append(temp, Vec2Lerp(item, next.WeightDeform[i][j], rate))
 				}
 				weightDeform = append(weightDeform, temp)
 			}
 		} else {
 			for i := 0; i < len(pre.Deform); i++ {
-				deform = append(deform, mgl32.Vec2{
-					Lerp(pre.Deform[i].X(), next.Deform[i].X(), rate),
-					Lerp(pre.Deform[i].Y(), next.Deform[i].Y(), rate),
-				})
+				deform = append(deform, Vec2Lerp(pre.Deform[i], next.Deform[i], rate))
 			}
 		}
 		d.setDeform(deform, weightDeform)
@@ -268,12 +239,7 @@ func (c *ColorAnimUpdate) Update(curr float32) {
 		pre := c.KeyFrames[idx]
 		next := c.KeyFrames[idx+1]
 		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
-		c.Slot.CurrColor = mgl32.Vec4{
-			Lerp(pre.Color[0], next.Color[0], rate),
-			Lerp(pre.Color[1], next.Color[1], rate),
-			Lerp(pre.Color[2], next.Color[2], rate),
-			Lerp(pre.Color[3], next.Color[3], rate),
-		}
+		c.Slot.CurrColor = Vec4Lerp(pre.Color, next.Color, rate)
 	}
 }
 
@@ -327,18 +293,8 @@ func (c *TwoColorAnimUpdate) Update(curr float32) {
 		pre := c.KeyFrames[idx]
 		next := c.KeyFrames[idx+1]
 		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
-		c.Slot.CurrColor = mgl32.Vec4{
-			Lerp(pre.Color[0], next.Color[0], rate),
-			Lerp(pre.Color[1], next.Color[1], rate),
-			Lerp(pre.Color[2], next.Color[2], rate),
-			Lerp(pre.Color[3], next.Color[3], rate),
-		}
-		c.Slot.CurrDarkColor = mgl32.Vec4{
-			Lerp(pre.DarkColor[0], next.DarkColor[0], rate),
-			Lerp(pre.DarkColor[1], next.DarkColor[1], rate),
-			Lerp(pre.DarkColor[2], next.DarkColor[2], rate),
-			Lerp(pre.DarkColor[3], next.DarkColor[3], rate),
-		}
+		c.Slot.CurrColor = Vec4Lerp(pre.Color, next.Color, rate)
+		c.Slot.CurrDarkColor = Vec4Lerp(pre.DarkColor, next.DarkColor, rate)
 	}
 }
 
