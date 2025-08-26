@@ -25,21 +25,26 @@ type BoneNode struct {
 func (n *BoneNode) Update() {
 	if n.Parent == nil { // 没有父节点局部坐标就是世界坐标
 		n.Bone.WorldPos = n.Bone.LocalPos
-		n.Bone.Mat2 = Rotate(n.Bone.LocalRotate).Mul2(Scale(n.Bone.LocalScale))
+		n.Bone.Mat2 = GScaleMat.
+			Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
 	} else {
 		parent := n.Parent.Bone // 坐标计算毕竟是在父坐标系还是会受影响的
 		n.Bone.WorldPos = parent.Mat2.Mul2x1(n.Bone.LocalPos).Add(parent.WorldPos)
 		switch n.Bone.TransformMode {
 		case TransformNormal:
-			n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
+			n.Bone.Mat2 = parent.Mat2.
+				Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
 		case TransformOnlyTranslation:
-			n.Bone.Mat2 = Rotate(n.Bone.LocalRotate).Mul2(Scale(n.Bone.LocalScale))
+			n.Bone.Mat2 = GScaleMat.
+				Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
 		case TransformNoRotationOrReflection:
 			rotate := GetRotate(parent.Mat2) // 移除父对象的旋转量
-			n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(n.Bone.LocalRotate - rotate)).Mul2(Scale(n.Bone.LocalScale))
+			n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(-rotate)).
+				Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
 		case TransformNoScale, TransformNoScaleOrReflection:
-			scale := GetScale(parent.Mat2) // 移除父对象的缩放量
-			n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(Vec2Div(n.Bone.LocalScale, scale)))
+			scale := Vec2Div(GScaleVec, GetScale(parent.Mat2)) // 移除父对象的缩放量
+			n.Bone.Mat2 = parent.Mat2.Mul2(Scale(scale)).
+				Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
 		default:
 			panic(fmt.Sprintf("invalid mode: %v", n.Bone.TransformMode))
 		} // 参考原项目必须使用矩阵变换，非等比缩放影响必须使用矩阵累加
@@ -110,7 +115,7 @@ type Game struct {
 }
 
 func NewGame(atlas *Atlas, skel *Skel) *Game {
-	res := &Game{Atlas: atlas, Skel: skel, Pos: mgl32.Vec2{640, 100}, AnimIndex: 0}
+	res := &Game{Atlas: atlas, Skel: skel, Pos: mgl32.Vec2{640, 705}, AnimIndex: 0}
 	res.Image = res.loadImage()
 	res.BoneRoot = res.calculateBoneRoot()
 	res.OrderSlots = res.calculateOrderSlot()

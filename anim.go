@@ -351,7 +351,13 @@ func NewAnimController(anim *Animation, skel *Skel, attachments map[string]*Atta
 		case TimelineTransformConstraint:
 			updates = append(updates, NewTransformConstraintAnimUpdate(skel.TransformConstraints[timeline.TransformConstraint], timeline.KeyFrames))
 		case TimelineShear:
-			// 先不处理斜切
+		// 先不处理斜切，基本没有斜切的
+		case TimelinePathConstraintPosition:
+		// TODO
+		case TimelinePathConstraintSpace:
+		// TODO
+		case TimelinePathConstraintMix:
+			// TODO
 		default:
 			panic("unknown timeline type")
 		}
