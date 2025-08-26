@@ -3,7 +3,7 @@ package main
 import "github.com/go-gl/mathgl/mgl32"
 
 const (
-	BasePath = "/Users/sky/Documents/go/my_spine/"
+	BasePath = "/Users/wepie/Documents/go/my_spine/"
 )
 
 var (

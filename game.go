@@ -39,8 +39,8 @@ func (n *BoneNode) Update() {
 				Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
 		case TransformNoRotationOrReflection:
 			rotate := GetRotate(parent.Mat2) // 移除父对象的旋转量
-			n.Bone.Mat2 = parent.Mat2.Mul2(Rotate(-rotate)).
-				Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
+			n.Bone.Mat2 = parent.Mat2.
+				Mul2(Rotate(n.Bone.LocalRotate - rotate)).Mul2(Scale(n.Bone.LocalScale))
 		case TransformNoScale, TransformNoScaleOrReflection:
 			scale := Vec2Div(GScaleVec, GetScale(parent.Mat2)) // 移除父对象的缩放量
 			n.Bone.Mat2 = parent.Mat2.Mul2(Scale(scale)).

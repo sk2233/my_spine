@@ -81,7 +81,11 @@ func Scale(scale mgl32.Vec2) mgl32.Mat2 {
 	            Sy = sqrt((-Sy*sin)^2 + (Sy*cos)^2)
 */
 func GetRotate(mat2 mgl32.Mat2) float32 {
-	return float32(math.Atan(float64(mat2[2]/mat2[0])) * 180 / math.Pi)
+	if mat2[2]*mat2[2]+mat2[0]*mat2[0] > 0.0001 { // Sx^2 不为 0
+		return float32(math.Atan2(float64(mat2[2]), float64(mat2[0])) * 180 / math.Pi)
+	} else { // Sx*2 太小了，使用 后面一对提取角度
+		return float32(math.Atan2(float64(-mat2[1]), float64(mat2[3])) * 180 / math.Pi)
+	}
 }
 
 func GetScale(mat2 mgl32.Mat2) mgl32.Vec2 {
