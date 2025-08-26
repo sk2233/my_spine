@@ -6,7 +6,12 @@ const (
 	BasePath = "/Users/wepie/Documents/go/my_spine/"
 )
 
+const (
+	GSignX = 1
+	GSignY = -1
+	GScale = 0.35
+)
+
 var (
-	GScaleVec = mgl32.Vec2{0.35, -0.35}
-	GScaleMat = Scale(GScaleVec)
+	GScaleMat = Scale(mgl32.Vec2{GSignX * GScale, GSignY * GScale})
 )
