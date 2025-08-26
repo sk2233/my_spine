@@ -88,6 +88,7 @@ func GetRotate(mat2 mgl32.Mat2) float32 {
 	}
 }
 
+// 返回的缩放是没有符号的
 func GetScale(mat2 mgl32.Mat2) mgl32.Vec2 {
 	return mgl32.Vec2{
 		float32(math.Sqrt(float64(mat2[0]*mat2[0] + mat2[2]*mat2[2]))),

@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
+	"math"
 	"os"
 	"sort"
 
@@ -25,8 +26,7 @@ type BoneNode struct {
 func (n *BoneNode) Update() {
 	if n.Parent == nil { // 没有父节点局部坐标就是世界坐标
 		n.Bone.WorldPos = n.Bone.LocalPos
-		n.Bone.Mat2 = GScaleMat.
-			Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
+		n.Bone.Mat2 = Rotate(n.Bone.LocalRotate).Mul2(Scale(n.Bone.LocalScale))
 	} else {
 		parent := n.Parent.Bone // 坐标计算毕竟是在父坐标系还是会受影响的
 		n.Bone.WorldPos = parent.Mat2.Mul2x1(n.Bone.LocalPos).Add(parent.WorldPos)
@@ -35,16 +35,32 @@ func (n *BoneNode) Update() {
 			n.Bone.Mat2 = parent.Mat2.
 				Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
 		case TransformOnlyTranslation:
-			n.Bone.Mat2 = GScaleMat.
-				Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
-		case TransformNoRotationOrReflection:
-			rotate := GetRotate(parent.Mat2) // 移除父对象的旋转量
+			n.Bone.Mat2 = Rotate(n.Bone.LocalRotate).Mul2(Scale(n.Bone.LocalScale))
+		case TransformNoRotationOrReflection: // 缩放要移除符号
+			mat2 := parent.Mat2
+			s := mat2[0]*mat2[0] + mat2[2]*mat2[2] // Sx^2
+			rotate := 0.0
+			if s > 0.0001 { // 主要是移除缩放的符号
+				s = mgl32.Abs(mat2[0]*mat2[3]-mat2[1]*mat2[2]) / s                      // Sy/Sx 正数
+				mat2[1] = mat2[2] * s                                                   // Sy*sin 统一符号
+				mat2[3] = mat2[0] * s                                                   // Sy*cos
+				rotate = math.Atan2(float64(mat2[2]), float64(mat2[0])) * 180 / math.Pi // 求角度
+				mat2[2] = -mat2[2]
+			} else {
+				mat2[0] = 0
+				mat2[2] = 0 // Sx 为 0 无法求角度，使用另外一个搭配
+				rotate = math.Atan2(float64(-mat2[1]), float64(mat2[3])) * 180 / math.Pi
+			}
+			n.Bone.Mat2 = mat2.
+				Mul2(Rotate(n.Bone.LocalRotate - float32(rotate))).Mul2(Scale(n.Bone.LocalScale))
+		case TransformNoScale: // 只是没有缩放了，若是 负数缩放还是要保留负数 例如 缩放 -2 -> -1
+			scale := GetScale(parent.Mat2) // 移除父对象的缩放量
 			n.Bone.Mat2 = parent.Mat2.
-				Mul2(Rotate(n.Bone.LocalRotate - rotate)).Mul2(Scale(n.Bone.LocalScale))
-		case TransformNoScale, TransformNoScaleOrReflection:
-			scale := Vec2Div(GScaleVec, GetScale(parent.Mat2)) // 移除父对象的缩放量
-			n.Bone.Mat2 = parent.Mat2.Mul2(Scale(scale)).
-				Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
+				Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(Vec2Div(n.Bone.LocalScale, scale)))
+		case TransformNoScaleOrReflection: // 没有缩放且不保留负数 例如缩放 -2 ->  1
+			rotate := GetRotate(parent.Mat2)
+			n.Bone.Mat2 = Rotate(n.Bone.LocalRotate + rotate).Mul2(Scale(n.Bone.LocalScale))
+			fmt.Println("TransformNoScaleOrReflection in use") // 不常被使用，没怎么验证
 		default:
 			panic(fmt.Sprintf("invalid mode: %v", n.Bone.TransformMode))
 		} // 参考原项目必须使用矩阵变换，非等比缩放影响必须使用矩阵累加

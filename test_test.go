@@ -25,6 +25,11 @@ func TestRotateAndScale(t *testing.T) {
 }
 
 func TestAllMat(t *testing.T) {
-	fmt.Println(GetRotate(Rotate(90)))
-	fmt.Println(GetScale(Scale(mgl32.Vec2{2, 3})))
+	//fmt.Println(GetRotate(Rotate(90)))
+	//fmt.Println(GetScale(Scale(mgl32.Vec2{2, 3})))
+	m := mgl32.Mat4{}
+	m[2] = 2233
+	m2 := m
+	m2[2] = 2323
+	fmt.Println(m)
 }

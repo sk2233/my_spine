@@ -4,9 +4,6 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// TODO 注意角度要控制在  -180 ～ 180 之间  全部检查一遍
-// TODO 部分骨骼翻转 180  好像是部分动画导致的，会突变
-
 func main() {
 	// 缺失 IK 的支持
 	atlas := ParseAtlas("res/dyn_illust_1012_skadi2/dyn_illust_char_1012_skadi2.atlas")
