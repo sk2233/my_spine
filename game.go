@@ -231,7 +231,7 @@ func (g *Game) Update() error {
 	g.AnimController.Update()
 	// 计算出世界坐标 世界旋转 世界缩放 与 世界矩阵
 	g.BoneRoot.Update()
-	// 对世界坐标下的对象应用约束
+	// 对世界坐标下的对象应用约束  TODO  与其动画的支持
 	//g.ConstraintController.Update()
 	//g.BoneRoot.ApplyModify() // 应用世界坐标的修改
 	sort.Slice(g.OrderSlots, func(i, j int) bool {
@@ -329,7 +329,7 @@ func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
 		}
 		for i := 2; i < len(vertices); i++ {
 			indices = append(indices, 0, uint16(i-1), uint16(i))
-		}
+		} // 蒙版展示没有生效
 	} else {
 		panic("unknown attachment type")
 	}
