@@ -9,7 +9,7 @@ const (
 const (
 	GSignX = 1
 	GSignY = -1
-	GScale = 0.6
+	GScale = 0.4
 )
 
 var (
