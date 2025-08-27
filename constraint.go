@@ -54,11 +54,12 @@ func (c *ConstraintController) updateTransformConstraints() {
 
 func (c *ConstraintController) updatePathConstraints() {
 	for _, item := range c.PathConstraints {
-		if item.OffsetMix <= 0 && item.RotateMix <= 0 {
+		if item.CurrOffsetMix <= 0 && item.CurrRotateMix <= 0 {
 			continue // 无效值
 		}
-		if item.PositionMode != PositionPercent || item.SpaceMode != SpacePercent || item.RotateMode != RotateChainScale {
-			panic("not implemented") // 只实现了部分，也可以直接跳过没有实现的
+		if item.SpaceMode == SpaceLength { // rotate 模型只支持最简单的，不做管理
+			//panic("not implemented") // 只实现了部分，也可以直接跳过没有实现的
+			continue
 		}
 		attachment := item.Attachment
 		points := make([]mgl32.Vec2, 0) // 只存储线段点，暂时不管控制点
@@ -86,21 +87,29 @@ func (c *ConstraintController) updatePathConstraints() {
 			lens = append(lens, temp)
 			allLen += temp
 		}
-		rate := item.Position
+		curr := item.CurrPosition               // 初始化初始值
+		if item.PositionMode == PositionFixed { // fix 转换为 分数
+			curr = item.CurrPosition / attachment.Lengths[len(attachment.Lengths)-1]
+		}
+		space := item.CurrSpace
+		if item.SpaceMode == SpaceFixed { // fix 转换为 分数
+			space = item.CurrSpace / attachment.Lengths[len(attachment.Lengths)-1]
+		}
 		for _, idx := range item.Bones {
 			bone := c.Bones[idx] // 计算线段位置处的坐标与旋转角度
-			pos, rotate := c.calculatePosAndRotate(points, lens, allLen*rate)
-			if item.RotateMix > 0 {
+			pos, rotate := c.calculatePosAndRotate(points, lens, curr*allLen)
+			rotate += item.Rotate
+			if item.CurrRotateMix > 0 {
 				oldRotate := GetRotate(bone.Mat2)
-				rotate = LerpRotate(oldRotate, rotate, item.RotateMix) - oldRotate
+				rotate = LerpRotate(oldRotate, rotate, item.CurrRotateMix) - oldRotate
 				bone.Mat2 = Rotate(rotate).Mul2(bone.Mat2)
 				bone.Modify = true
 			}
-			if item.OffsetMix > 0 {
-				bone.WorldPos = Vec2Lerp(bone.WorldPos, pos, item.OffsetMix)
+			if item.CurrOffsetMix > 0 {
+				bone.WorldPos = Vec2Lerp(bone.WorldPos, pos, item.CurrOffsetMix)
 				bone.Modify = true
 			}
-			rate += item.Space
+			curr += space
 		}
 	}
 }

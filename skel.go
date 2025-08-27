@@ -305,8 +305,12 @@ type PathConstraint struct {
 	RotateMix                           float32
 	OffsetMix                           float32
 	// 运行时数据
-	Attachment *Attachment // 对应的 Path
-	Bone       int         // 对应的骨骼只有 Path 点非 Weight 时用的上，一般都是 Weight 的
+	Attachment    *Attachment // 对应的 Path
+	Bone          int         // 对应的骨骼只有 Path 点非 Weight 时用的上，一般都是 Weight 的
+	CurrPosition  float32
+	CurrSpace     float32
+	CurrRotateMix float32
+	CurrOffsetMix float32
 }
 
 type Skel struct {

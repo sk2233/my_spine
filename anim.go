@@ -302,6 +302,78 @@ func NewTwoColorAnimUpdate(slot *Slot, keyFrames []*KeyFrame) *TwoColorAnimUpdat
 	return &TwoColorAnimUpdate{Slot: slot, KeyFrames: keyFrames}
 }
 
+type PathPositionAnimUpdate struct {
+	PathConstraint *PathConstraint
+	KeyFrames      []*KeyFrame
+}
+
+func (t *PathPositionAnimUpdate) Update(curr float32) {
+	idx := GetIndexByTime(t.KeyFrames, curr)
+	if idx < 0 {
+		t.PathConstraint.CurrPosition = t.KeyFrames[0].Position
+	} else if idx+1 >= len(t.KeyFrames) {
+		t.PathConstraint.CurrPosition = t.KeyFrames[idx].Position
+	} else {
+		pre := t.KeyFrames[idx]
+		next := t.KeyFrames[idx+1]
+		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
+		t.PathConstraint.CurrPosition = Lerp(pre.Position, next.Position, rate)
+	}
+}
+
+func NewPathPositionAnimUpdate(pathConstraint *PathConstraint, keyFrames []*KeyFrame) *PathPositionAnimUpdate {
+	return &PathPositionAnimUpdate{PathConstraint: pathConstraint, KeyFrames: keyFrames}
+}
+
+type PathSpaceAnimUpdate struct {
+	PathConstraint *PathConstraint
+	KeyFrames      []*KeyFrame
+}
+
+func (t *PathSpaceAnimUpdate) Update(curr float32) {
+	idx := GetIndexByTime(t.KeyFrames, curr)
+	if idx < 0 {
+		t.PathConstraint.CurrSpace = t.KeyFrames[0].Space
+	} else if idx+1 >= len(t.KeyFrames) {
+		t.PathConstraint.CurrSpace = t.KeyFrames[idx].Space
+	} else {
+		pre := t.KeyFrames[idx]
+		next := t.KeyFrames[idx+1]
+		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
+		t.PathConstraint.CurrSpace = Lerp(pre.Space, next.Space, rate)
+	}
+}
+
+func NewPathSpaceAnimUpdate(pathConstraint *PathConstraint, keyFrames []*KeyFrame) *PathSpaceAnimUpdate {
+	return &PathSpaceAnimUpdate{PathConstraint: pathConstraint, KeyFrames: keyFrames}
+}
+
+type PathMixAnimUpdate struct {
+	PathConstraint *PathConstraint
+	KeyFrames      []*KeyFrame
+}
+
+func (t *PathMixAnimUpdate) Update(curr float32) {
+	idx := GetIndexByTime(t.KeyFrames, curr)
+	if idx < 0 {
+		t.PathConstraint.CurrRotateMix = t.KeyFrames[0].RotateMix
+		t.PathConstraint.CurrOffsetMix = t.KeyFrames[0].OffsetMix
+	} else if idx+1 >= len(t.KeyFrames) {
+		t.PathConstraint.CurrRotateMix = t.KeyFrames[idx].RotateMix
+		t.PathConstraint.CurrOffsetMix = t.KeyFrames[idx].OffsetMix
+	} else {
+		pre := t.KeyFrames[idx]
+		next := t.KeyFrames[idx+1]
+		rate := CurveVal(pre.Curve, (curr-pre.Time)/(next.Time-pre.Time))
+		t.PathConstraint.CurrRotateMix = Lerp(pre.RotateMix, next.RotateMix, rate)
+		t.PathConstraint.CurrOffsetMix = Lerp(pre.OffsetMix, next.OffsetMix, rate)
+	}
+}
+
+func NewPathMixAnimUpdate(pathConstraint *PathConstraint, keyFrames []*KeyFrame) *PathMixAnimUpdate {
+	return &PathMixAnimUpdate{PathConstraint: pathConstraint, KeyFrames: keyFrames}
+}
+
 type AnimController struct {
 	AnimName    string
 	Duration    float32
@@ -350,14 +422,14 @@ func NewAnimController(anim *Animation, skel *Skel, attachments map[string]*Atta
 			updates = append(updates, NewTwoColorAnimUpdate(skel.Slots[timeline.Slot], timeline.KeyFrames))
 		case TimelineTransformConstraint:
 			updates = append(updates, NewTransformConstraintAnimUpdate(skel.TransformConstraints[timeline.TransformConstraint], timeline.KeyFrames))
+		case TimelinePathConstraintPosition:
+			updates = append(updates, NewPathPositionAnimUpdate(skel.PathConstraints[timeline.PathConstraint], timeline.KeyFrames))
+		case TimelinePathConstraintSpace:
+			updates = append(updates, NewPathSpaceAnimUpdate(skel.PathConstraints[timeline.PathConstraint], timeline.KeyFrames))
+		case TimelinePathConstraintMix:
+			updates = append(updates, NewPathMixAnimUpdate(skel.PathConstraints[timeline.PathConstraint], timeline.KeyFrames))
 		case TimelineShear:
 		// 先不处理斜切，基本没有斜切的
-		case TimelinePathConstraintPosition:
-		// TODO
-		case TimelinePathConstraintSpace:
-		// TODO
-		case TimelinePathConstraintMix:
-			// TODO
 		default:
 			panic("unknown timeline type")
 		}
