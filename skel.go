@@ -35,15 +35,22 @@ type Bone struct {
 	Shear         mgl32.Vec2
 	Length        float32 // IK 使用的 暂时没用
 	TransformMode uint8   // 继承父节点那些变换属性
-	SkinRequire   bool    // 多皮肤使用的 暂时没用
-	// 运行时数据
-	CurrRotate      float32
-	CurrPos         mgl32.Vec2
-	CurrScale       mgl32.Vec2
-	NormalMat3      mgl32.Mat3 // TransformNormal
-	TranslationMat3 mgl32.Mat3 // TransformOnlyTranslation
-	NoRotateMat3    mgl32.Mat3 // TransformNoRotationOrReflection
-	NoScaleMat3     mgl32.Mat3 // TransformNoScale TransformNoScaleOrReflection
+	SkinRequire   bool    // 多皮肤使用的
+	// 运行时数据  Local
+	LocalRotate float32
+	LocalPos    mgl32.Vec2
+	LocalScale  mgl32.Vec2
+	// World
+	WorldPos mgl32.Vec2
+	/*
+			Sx*cos , -Sy*sin
+			Sx*sin , Sy*cos
+			角度提取 tan = Sx*sin / Sx*cos
+			缩放提取 Sx = sqrt((Sx*cos)^2 + (Sx*sin)^2)
+		            Sy = sqrt((-Sy*sin)^2 + (Sy*cos)^2)
+	*/
+	Mat2   mgl32.Mat2 // 世界变换矩阵
+	Modify bool       // 标记世界坐标被修改过，需要重新递归计算
 }
 
 const (
@@ -132,7 +139,7 @@ type Attachment struct {
 	// AttachmentPath
 	Close         bool
 	ConstantSpeed bool
-	Lengths       []float32
+	Lengths       []float32 // 每 3 个点一组，前两个点为贝塞尔曲线控制点，最后一个点为实际点 长度就是每组点到原点的距离
 	// AttachmentClip
 	EndSlot int
 	// 运行时数据
@@ -178,6 +185,16 @@ type KeyFrame struct {
 	Weight       bool           // 要修改的是不是 WeightVertex
 	Deform       []mgl32.Vec2   // 不是 WeightVertex 针对每个点的偏移
 	WeightDeform [][]mgl32.Vec2 // 是 WeightVertex 针对每个骨骼偏移的修改
+	// TimelineTransformConstraint
+	RotateMix float32
+	OffsetMix float32
+	ScaleMix  float32
+	ShearMix  float32
+	// TimelinePathConstraintPosition
+	Position float32
+	// TimelinePathConstraintSpace
+	Space float32
+	// TimelinePathConstraintMix 复用上面的  RotateMix  OffsetMix
 }
 
 const (
@@ -212,17 +229,19 @@ const (
 	TimelineIkConstraint           = 9
 	TimelineTransformConstraint    = 10
 	TimelinePathConstraintPosition = 11
-	TimelinePathConstraintSpacing  = 12
+	TimelinePathConstraintSpace    = 12
 	TimelinePathConstraintMix      = 13
 	TimelineTwoColor               = 14
 )
 
 type Timeline struct {
-	Type       uint8
-	Slot       int
-	Bone       int
-	Attachment string
-	KeyFrames  []*KeyFrame
+	Type                uint8
+	Slot                int
+	Bone                int
+	Attachment          string
+	TransformConstraint int
+	PathConstraint      int
+	KeyFrames           []*KeyFrame
 }
 
 type Animation struct {
@@ -231,12 +250,73 @@ type Animation struct {
 	Duration  float32
 }
 
+type TransformConstraint struct {
+	Name        string
+	Order       int  // 作用顺序
+	SkinRequire bool // 暂不使用
+	// Bones 受 Target 的影响
+	Bones           []int
+	Target          int
+	Local, Relative bool // 影响坐标方式
+	// Target 的偏移
+	Rotate float32
+	Offset mgl32.Vec2
+	Scale  mgl32.Vec2
+	ShearY float32
+	// 混合程度
+	RotateMix float32
+	OffsetMix float32
+	ScaleMix  float32
+	ShearMix  float32
+	// 运行时数据
+	CurrRotateMix float32
+	CurrOffsetMix float32
+	CurrScaleMix  float32
+}
+
+const (
+	PositionFixed   = 0
+	PositionPercent = 1
+)
+
+const (
+	SpaceLength  = 0
+	SpaceFixed   = 1
+	SpacePercent = 2
+)
+
+const ( // 各种确定在路径上旋转值的方式
+	RotateTangent    = 0
+	RotateChain      = 1
+	RotateChainScale = 2
+)
+
+// http://zh.esotericsoftware.com/spine-path-constraints
+type PathConstraint struct {
+	Name                                string
+	Order                               int // 顺序
+	SkinRequire                         bool
+	Bones                               []int // 沿路径的骨骼
+	Target                              int   // 路径所在的插槽
+	PositionMode, SpaceMode, RotateMode uint8
+	Rotate                              float32 // 旋转偏移 默认旋转方向沿着路径方向
+	Position                            float32 // 在路径上的位置
+	Space                               float32 // 多个 Bones 在路径上的间距
+	RotateMix                           float32
+	OffsetMix                           float32
+	// 运行时数据
+	Attachment *Attachment // 对应的 Path
+	Bone       int         // 对应的骨骼只有 Path 点非 Weight 时用的上，一般都是 Weight 的
+}
+
 type Skel struct {
-	Header     *SkelHeader
-	Bones      []*Bone
-	Slots      []*Slot
-	Skin       *Skin // 暂时只支持默认皮肤，不支持换肤
-	Animations []*Animation
+	Header               *SkelHeader
+	Bones                []*Bone
+	Slots                []*Slot
+	TransformConstraints []*TransformConstraint
+	PathConstraints      []*PathConstraint
+	Skin                 *Skin // 暂时只支持默认皮肤，不支持换肤
+	Animations           []*Animation
 }
 
 func ParseSkel(path string) *Skel {
@@ -246,17 +326,85 @@ func ParseSkel(path string) *Skel {
 	strings := parseStrings(reader)
 	bones := parseBones(reader)
 	slots := parseSlots(reader, strings)
-	skipConstraints(reader) // 暂时不使用约束，跳过
+	skipIKConstraints(reader) // 暂时不使用IK约束
+	transformConstraints := parseTransformConstraints(reader)
+	pathConstraints := parsePathConstraints(reader)
 	skin := parseSkin(reader, strings)
 	skipEvents(reader, strings)
 	animations := parseAnimations(reader, strings, slots, skin)
 	return &Skel{
-		Header:     header,
-		Bones:      bones,
-		Slots:      slots,
-		Skin:       skin,
-		Animations: animations,
+		Header:               header,
+		Bones:                bones,
+		Slots:                slots,
+		TransformConstraints: transformConstraints,
+		PathConstraints:      pathConstraints,
+		Skin:                 skin,
+		Animations:           animations,
 	}
+}
+
+func parsePathConstraints(reader io.Reader) []*PathConstraint {
+	res := make([]*PathConstraint, 0)
+	count := readInt(reader)
+	for i := 0; i < count; i++ {
+		temp := &PathConstraint{
+			Name:        readStr(reader),
+			Order:       readInt(reader),
+			SkinRequire: readBool(reader),
+		}
+		bCount := readInt(reader)
+		for j := 0; j < bCount; j++ {
+			temp.Bones = append(temp.Bones, readInt(reader))
+		}
+		temp.Target = readInt(reader)
+		temp.PositionMode = readU8(reader)
+		temp.SpaceMode = readU8(reader)
+		temp.RotateMode = readU8(reader)
+		temp.Rotate = readF4(reader)
+		temp.Position = readF4(reader)
+		temp.Space = readF4(reader)
+		temp.RotateMix = readF4(reader)
+		temp.OffsetMix = readF4(reader)
+		res = append(res, temp)
+	}
+	sort.Slice(res, func(i, j int) bool {
+		return res[i].Order < res[j].Order
+	})
+	return res
+}
+
+func parseTransformConstraints(reader io.Reader) []*TransformConstraint {
+	res := make([]*TransformConstraint, 0)
+	count := readInt(reader)
+	for i := 0; i < count; i++ {
+		temp := &TransformConstraint{
+			Name:        readStr(reader),
+			Order:       readInt(reader),
+			SkinRequire: readBool(reader),
+		}
+		boneCount := readInt(reader)
+		for j := 0; j < boneCount; j++ {
+			temp.Bones = append(temp.Bones, readInt(reader))
+		}
+		temp.Target = readInt(reader)
+		temp.Local = readBool(reader)
+		temp.Relative = readBool(reader)
+		temp.Rotate = readF4(reader)
+		vs := [2]mgl32.Vec2{}
+		readAny(reader, &vs)
+		temp.Offset = vs[0]
+		temp.Scale = vs[1]
+		temp.ShearY = readF4(reader)
+		temp.RotateMix = readF4(reader)
+		temp.OffsetMix = readF4(reader)
+		temp.ScaleMix = readF4(reader)
+		temp.ShearMix = readF4(reader)
+		res = append(res, temp)
+	}
+	sort.Slice(res, func(i, j int) bool {
+		return res[i].Order < res[j].Order
+	})
+	return res
 }
 
 func parseAnimations(reader io.Reader, strings []string, slots []*Slot, skin *Skin) []*Animation {
@@ -413,52 +561,81 @@ func parseAnimation(reader io.Reader, strings []string, slots []*Slot, skin *Ski
 		}
 		Use(index, fCount)
 	}
-	// Transform constraint skip
+	// Transform constraint
 	count = readInt(reader)
 	for i := 0; i < count; i++ {
-		index := readInt(reader)
+		timeline := &Timeline{
+			Type:                TimelineTransformConstraint,
+			TransformConstraint: readInt(reader),
+		}
 		fCount := readInt(reader)
 		for j := 0; j < fCount; j++ {
-			other := readByte(reader, 5*4)
-			if j < fCount-1 {
-				readCurve(reader)
+			keyFrame := &KeyFrame{
+				Time:      readF4(reader),
+				RotateMix: readF4(reader),
+				OffsetMix: readF4(reader),
+				ScaleMix:  readF4(reader),
+				ShearMix:  readF4(reader),
 			}
-			Use(other)
+			if j < fCount-1 {
+				keyFrame.Curve = readCurve(reader)
+			}
+			timeline.KeyFrames = append(timeline.KeyFrames, keyFrame)
 		}
-		Use(index, fCount)
+		timelines = append(timelines, timeline)
 	}
-	// Path constraint skip
+	// Path constraint
 	count = readInt(reader)
-	for i := 0; i < count; i++ {
-		index := readInt(reader)
+	for i := 0; i < count; i++ { // 路径动画数
+		pathConstraint := readInt(reader)
 		tCount := readInt(reader)
-		for j := 0; j < tCount; j++ {
+		for j := 0; j < tCount; j++ { // 每个路径下的时间线数
+			timeline := &Timeline{
+				PathConstraint: pathConstraint,
+			}
 			type0 := readU8(reader)
 			fCount := readInt(reader)
 			switch type0 {
-			case PathPosition, PathSpace:
+			case PathPosition:
+				timeline.Type = TimelinePathConstraintPosition
 				for k := 0; k < fCount; k++ {
-					time := readF4(reader)
-					position := readF4(reader)
-					if k < fCount-1 {
-						readCurve(reader)
+					keyFrame := &KeyFrame{
+						Time:     readF4(reader),
+						Position: readF4(reader),
 					}
-					Use(time, position)
+					if k < fCount-1 {
+						keyFrame.Curve = readCurve(reader)
+					}
+					timeline.KeyFrames = append(timeline.KeyFrames, keyFrame)
+				}
+			case PathSpace:
+				timeline.Type = TimelinePathConstraintSpace
+				for k := 0; k < fCount; k++ {
+					keyFrame := &KeyFrame{
+						Time:  readF4(reader),
+						Space: readF4(reader),
+					}
+					if k < fCount-1 {
+						keyFrame.Curve = readCurve(reader)
+					}
+					timeline.KeyFrames = append(timeline.KeyFrames, keyFrame)
 				}
 			case PathMix:
+				timeline.Type = TimelinePathConstraintMix
 				for k := 0; k < fCount; k++ {
-					time := readF4(reader)
-					rotate := readF4(reader)
-					translate := readF4(reader)
-					if k < fCount-1 {
-						readCurve(reader)
+					keyFrame := &KeyFrame{
+						Time:      readF4(reader),
+						RotateMix: readF4(reader),
+						OffsetMix: readF4(reader),
 					}
-					Use(time, rotate, translate)
+					if k < fCount-1 {
+						keyFrame.Curve = readCurve(reader)
+					}
+					timeline.KeyFrames = append(timeline.KeyFrames, keyFrame)
 				}
 			}
-			Use(fCount)
+			timelines = append(timelines, timeline)
 		}
-		Use(index, tCount)
 	}
 	// Deform
 	attachments := make(map[string]*Attachment)
@@ -743,8 +920,7 @@ func readU16(reader io.Reader) uint16 {
 	return binary.BigEndian.Uint16(temp)
 }
 
-func skipConstraints(reader io.Reader) {
-	// IK constraints
+func skipIKConstraints(reader io.Reader) {
 	count := readInt(reader)
 	for i := 0; i < count; i++ {
 		name := readStr(reader)
@@ -757,36 +933,6 @@ func skipConstraints(reader io.Reader) {
 		}
 		target := readInt(reader)
 		other := readByte(reader, 4*2+4)
-		Use(name, order, skinRequire, target, other)
-	}
-	// Transform constraints
-	count = readInt(reader)
-	for i := 0; i < count; i++ {
-		name := readStr(reader)
-		order := readInt(reader)
-		skinRequire := readBool(reader)
-		boneCount := readInt(reader)
-		for j := 0; j < boneCount; j++ {
-			bone := readInt(reader)
-			Use(bone)
-		}
-		target := readInt(reader)
-		other := readByte(reader, 2+10*4)
-		Use(name, order, skinRequire, target, other)
-	}
-	// Path constraints
-	count = readInt(reader)
-	for i := 0; i < count; i++ {
-		name := readStr(reader)
-		order := readInt(reader)
-		skinRequire := readBool(reader)
-		boneCount := readInt(reader)
-		for j := 0; j < boneCount; j++ {
-			bone := readInt(reader)
-			Use(bone)
-		}
-		target := readInt(reader)
-		other := readByte(reader, 3+5*4)
 		Use(name, order, skinRequire, target, other)
 	}
 }

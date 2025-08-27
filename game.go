@@ -24,33 +24,110 @@ type BoneNode struct {
 }
 
 func (n *BoneNode) Update() {
-	mat3 := mgl32.Ident3()
-	mat3[4] = -1         // 颠倒上下 其坐标系与 OpenGL 相比是上下颠倒的
-	if n.Parent != nil { // 父节点肯定计算完了
+	if n.Parent == nil { // 没有父节点局部坐标就是世界坐标
+		n.Bone.WorldPos = n.Bone.LocalPos
+		n.Bone.Mat2 = GScaleMat.
+			Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
+	} else {
+		parent := n.Parent.Bone // 坐标计算毕竟是在父坐标系还是会受影响的
+		n.Bone.WorldPos = parent.Mat2.Mul2x1(n.Bone.LocalPos).Add(parent.WorldPos)
 		switch n.Bone.TransformMode {
 		case TransformNormal:
-			mat3 = n.Parent.Bone.NormalMat3
+			n.Bone.Mat2 = parent.Mat2.
+				Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
 		case TransformOnlyTranslation:
-			mat3 = n.Parent.Bone.TranslationMat3
-		case TransformNoRotationOrReflection:
-			mat3 = n.Parent.Bone.NoRotateMat3
-		case TransformNoScale, TransformNoScaleOrReflection:
-			mat3 = n.Parent.Bone.NoScaleMat3
+			n.Bone.Mat2 = GScaleMat.
+				Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
+		case TransformNoRotationOrReflection: // 缩放要移除符号
+			mat2 := parent.Mat2
+			s := mat2[0]*mat2[0] + mat2[2]*mat2[2] // Sx^2
+			rotate := 0.0
+			if s > 0.0001 { // 主要是移除缩放的符号
+				s = mgl32.Abs(mat2[0]*mat2[3]-mat2[1]*mat2[2]) / s                      // Sy/Sx 正数
+				mat2[1] = mat2[2] * s                                                   // Sy*sin 统一符号
+				mat2[3] = mat2[0] * s                                                   // Sy*cos
+				rotate = math.Atan2(float64(mat2[2]), float64(mat2[0])) * 180 / math.Pi // 求角度
+				mat2[2] = -mat2[2]
+			} else {
+				mat2[0] = 0
+				mat2[2] = 0 // Sx 为 0 无法求角度，使用另外一个搭配
+				rotate = math.Atan2(float64(-mat2[1]), float64(mat2[3])) * 180 / math.Pi
+			} // 这里移除了符号，最后需要再添加回来
+			n.Bone.Mat2 = Scale(mgl32.Vec2{GSignX, GSignY}).Mul2(mat2).
+				Mul2(Rotate(n.Bone.LocalRotate - float32(rotate))).Mul2(Scale(n.Bone.LocalScale))
+		case TransformNoScale: // 只是没有缩放了，若是 负数缩放还是要保留负数 例如 缩放 -2 -> -1
+			scale := GetScale(parent.Mat2).Mul(1 / GScale) // 移除父对象的缩放量
+			n.Bone.Mat2 = parent.Mat2.
+				Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(Vec2Div(n.Bone.LocalScale, scale)))
+		case TransformNoScaleOrReflection: // 没有缩放且不保留负数 例如缩放 -2 ->  1
+			rotate := GetRotate(parent.Mat2)
+			n.Bone.Mat2 = GScaleMat.
+				Mul2(Rotate(n.Bone.LocalRotate + rotate)).Mul2(Scale(n.Bone.LocalScale))
+			fmt.Println("TransformNoScaleOrReflection in use") // 不常被使用，没怎么验证
 		default:
-			panic(fmt.Sprintf("unknown transform mode: %v", n.Bone.TransformMode))
-		}
+			panic(fmt.Sprintf("invalid mode: %v", n.Bone.TransformMode))
+		} // 参考原项目必须使用矩阵变换，非等比缩放影响必须使用矩阵累加
 	}
-	// 计算各种子节点可能需要的
-	n.Bone.NormalMat3 = mat3.Mul3(mgl32.Translate2D(n.Bone.CurrPos.X(), n.Bone.CurrPos.Y())).
-		Mul3(mgl32.HomogRotate2D(n.Bone.CurrRotate * math.Pi / 180)).
-		Mul3(mgl32.Scale2D(n.Bone.CurrScale.X(), n.Bone.CurrScale.Y()))
-	n.Bone.TranslationMat3 = mat3.Mul3(mgl32.Translate2D(n.Bone.CurrPos.X(), n.Bone.CurrPos.Y()))
-	n.Bone.NoRotateMat3 = mat3.Mul3(mgl32.Translate2D(n.Bone.CurrPos.X(), n.Bone.CurrPos.Y())).
-		Mul3(mgl32.Scale2D(n.Bone.CurrScale.X(), n.Bone.CurrScale.Y()))
-	n.Bone.NoScaleMat3 = mat3.Mul3(mgl32.Translate2D(n.Bone.CurrPos.X(), n.Bone.CurrPos.Y())).
-		Mul3(mgl32.HomogRotate2D(n.Bone.CurrRotate * math.Pi / 180))
 	for _, child := range n.Children {
 		child.Update()
+	}
+}
+
+func (n *BoneNode) ApplyModify() {
+	if n.Bone.Modify {
+		n.Bone.Modify = false // 源头节点只更新 Mat3 即可
+		for _, item := range n.Children {
+			item.updateWorld() // 会清除子节点的 Modify
+		}
+	} else { // TODO 父子节点同时被修改怎么办？ 父节点递归更新会丢掉子节点的更新
+		for _, item := range n.Children {
+			item.ApplyModify()
+		}
+	}
+}
+
+func (n *BoneNode) updateWorld() {
+	parent := n.Parent.Bone // 坐标计算毕竟是在父坐标系还是会受影响的
+	n.Bone.WorldPos = parent.Mat2.Mul2x1(n.Bone.LocalPos).Add(parent.WorldPos)
+	switch n.Bone.TransformMode {
+	case TransformNormal:
+		n.Bone.Mat2 = parent.Mat2.
+			Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
+	case TransformOnlyTranslation:
+		n.Bone.Mat2 = GScaleMat.
+			Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(n.Bone.LocalScale))
+	case TransformNoRotationOrReflection: // 缩放要移除符号
+		mat2 := parent.Mat2
+		s := mat2[0]*mat2[0] + mat2[2]*mat2[2] // Sx^2
+		rotate := 0.0
+		if s > 0.0001 { // 主要是移除缩放的符号
+			s = mgl32.Abs(mat2[0]*mat2[3]-mat2[1]*mat2[2]) / s                      // Sy/Sx 正数
+			mat2[1] = mat2[2] * s                                                   // Sy*sin 统一符号
+			mat2[3] = mat2[0] * s                                                   // Sy*cos
+			rotate = math.Atan2(float64(mat2[2]), float64(mat2[0])) * 180 / math.Pi // 求角度
+			mat2[2] = -mat2[2]
+		} else {
+			mat2[0] = 0
+			mat2[2] = 0 // Sx 为 0 无法求角度，使用另外一个搭配
+			rotate = math.Atan2(float64(-mat2[1]), float64(mat2[3])) * 180 / math.Pi
+		} // 这里移除了符号，最后需要再添加回来
+		n.Bone.Mat2 = Scale(mgl32.Vec2{GSignX, GSignY}).Mul2(mat2).
+			Mul2(Rotate(n.Bone.LocalRotate - float32(rotate))).Mul2(Scale(n.Bone.LocalScale))
+	case TransformNoScale: // 只是没有缩放了，若是 负数缩放还是要保留负数 例如 缩放 -2 -> -1
+		scale := GetScale(parent.Mat2).Mul(1 / GScale) // 移除父对象的缩放量
+		n.Bone.Mat2 = parent.Mat2.
+			Mul2(Rotate(n.Bone.LocalRotate)).Mul2(Scale(Vec2Div(n.Bone.LocalScale, scale)))
+	case TransformNoScaleOrReflection: // 没有缩放且不保留负数 例如缩放 -2 ->  1
+		rotate := GetRotate(parent.Mat2)
+		n.Bone.Mat2 = GScaleMat.
+			Mul2(Rotate(n.Bone.LocalRotate + rotate)).Mul2(Scale(n.Bone.LocalScale))
+		fmt.Println("TransformNoScaleOrReflection in use") // 不常被使用，没怎么验证
+	default:
+		panic(fmt.Sprintf("invalid mode: %v", n.Bone.TransformMode))
+	} // 参考原项目必须使用矩阵变换，非等比缩放影响必须使用矩阵累加
+	n.Bone.Modify = false
+	for _, item := range n.Children {
+		item.updateWorld()
 	}
 }
 
@@ -74,15 +151,19 @@ type Game struct {
 	// 动画
 	AnimIndex      int
 	AnimController *AnimController
+	// 约束
+	ConstraintController *ConstraintController
 }
 
 func NewGame(atlas *Atlas, skel *Skel) *Game {
-	res := &Game{Atlas: atlas, Skel: skel, Pos: mgl32.Vec2{640, -720}, AnimIndex: 0}
+	res := &Game{Atlas: atlas, Skel: skel, Pos: mgl32.Vec2{640, 705}, AnimIndex: 0}
 	res.Image = res.loadImage()
 	res.BoneRoot = res.calculateBoneRoot()
 	res.OrderSlots = res.calculateOrderSlot()
 	res.Attachments = res.calculateAttachments()
-	res.AnimController = NewAnimController(skel.Animations[res.AnimIndex], skel.Bones, skel.Slots, res.Attachments)
+	res.AnimController = NewAnimController(skel.Animations[res.AnimIndex], skel, res.Attachments)
+	res.ConstraintController = NewConstraintController(skel.Bones, skel.PathConstraints, skel.TransformConstraints)
+	res.fillPathAttachment()
 	return res
 }
 
@@ -102,13 +183,14 @@ func (g *Game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyJ) {
 		g.AnimIndex = (g.AnimIndex - 1 + len(g.Skel.Animations)) % len(g.Skel.Animations)
 		anim := g.Skel.Animations[g.AnimIndex]
-		g.AnimController = NewAnimController(anim, g.Skel.Bones, g.Skel.Slots, g.Attachments)
+		g.AnimController = NewAnimController(anim, g.Skel, g.Attachments)
 	} else if inpututil.IsKeyJustPressed(ebiten.KeyK) {
 		g.AnimIndex = (g.AnimIndex + 1) % len(g.Skel.Animations)
 		anim := g.Skel.Animations[g.AnimIndex]
-		g.AnimController = NewAnimController(anim, g.Skel.Bones, g.Skel.Slots, g.Attachments)
+		g.AnimController = NewAnimController(anim, g.Skel, g.Attachments)
 	}
-	// 初始化数据
+	g.BoneRoot.Bone.Pos = g.Pos
+	// 初始化数据  运行时数据默认为初始状态，防止动画没有改动为 零值
 	for i, slot := range g.Skel.Slots {
 		slot.CurrOrder = i
 		slot.CurrAttachment = slot.Attachment
@@ -116,9 +198,9 @@ func (g *Game) Update() error {
 		slot.CurrDarkColor = slot.DarkColor
 	}
 	for _, bone := range g.Skel.Bones {
-		bone.CurrRotate = bone.Rotate
-		bone.CurrPos = bone.Pos
-		bone.CurrScale = bone.Scale
+		bone.LocalRotate = bone.Rotate
+		bone.LocalPos = bone.Pos
+		bone.LocalScale = bone.Scale
 	}
 	for _, attachment := range g.Skel.Skin.Attachments {
 		if attachment.Weight {
@@ -139,11 +221,19 @@ func (g *Game) Update() error {
 			copy(attachment.CurrVertices, attachment.Vertices)
 		}
 	}
+	for _, item := range g.Skel.TransformConstraints {
+		item.CurrScaleMix = item.ScaleMix
+		item.CurrRotateMix = item.RotateMix
+		item.CurrOffsetMix = item.OffsetMix
+	}
 	// 更新数据
+	// 应用动画 都是局部坐标系下的对象或者坐标系无关对象
 	g.AnimController.Update()
-	g.BoneRoot.Bone.CurrPos = g.Pos
-	g.BoneRoot.Bone.CurrScale = mgl32.Vec2{0.35, 0.35}
+	// 计算出世界坐标 世界旋转 世界缩放 与 世界矩阵
 	g.BoneRoot.Update()
+	// 对世界坐标下的对象应用约束  TODO  与其动画的支持
+	//g.ConstraintController.Update()
+	//g.BoneRoot.ApplyModify() // 应用世界坐标的修改
 	sort.Slice(g.OrderSlots, func(i, j int) bool {
 		return g.OrderSlots[i].CurrOrder < g.OrderSlots[j].CurrOrder
 	})
@@ -186,13 +276,13 @@ func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
 	currClr := Vec4Mul(slot.CurrColor, slot.CurrDarkColor)
 	// 不同组件的展示是 动画控制的，默认会全部展示
 	if attachment.Type == AttachmentRegion {
-		mat3 := g.Skel.Bones[slot.Bone].NormalMat3.Mul3(mgl32.Translate2D(attachment.Pos.X(), attachment.Pos.Y())).
-			Mul3(mgl32.HomogRotate2D(attachment.Rotate * math.Pi / 180)).
-			Mul3(mgl32.Scale2D(attachment.Scale.X(), attachment.Scale.Y()))
-		v0 := mat3.Mul3x1(mgl32.Vec3{-w / 2, h / 2, 1}).Vec2()
-		v1 := mat3.Mul3x1(mgl32.Vec3{w / 2, h / 2, 1}).Vec2()
-		v2 := mat3.Mul3x1(mgl32.Vec3{w / 2, -h / 2, 1}).Vec2()
-		v3 := mat3.Mul3x1(mgl32.Vec3{-w / 2, -h / 2, 1}).Vec2()
+		bone := g.Skel.Bones[slot.Bone]
+		worldPos := bone.Mat2.Mul2x1(attachment.Pos).Add(bone.WorldPos)
+		mat2 := bone.Mat2.Mul2(Rotate(attachment.Rotate)).Mul2(Scale(attachment.Scale))
+		v0 := mat2.Mul2x1(mgl32.Vec2{-w / 2, h / 2}).Add(worldPos)
+		v1 := mat2.Mul2x1(mgl32.Vec2{w / 2, h / 2}).Add(worldPos)
+		v2 := mat2.Mul2x1(mgl32.Vec2{w / 2, -h / 2}).Add(worldPos)
+		v3 := mat2.Mul2x1(mgl32.Vec2{-w / 2, -h / 2}).Add(worldPos)
 		vertices = append(vertices, NewVertex(v0.X(), v0.Y(), 0, 0))
 		vertices = append(vertices, NewVertex(v1.X(), v1.Y(), w, 0))
 		vertices = append(vertices, NewVertex(v2.X(), v2.Y(), w, h))
@@ -203,18 +293,17 @@ func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
 		if attachment.Weight {
 			for i, uv := range attachment.UVs {
 				res := mgl32.Vec2{}
-				wv := attachment.CurrWeightVertices[i]
-				for _, vec := range wv {
-					mat3 := g.Skel.Bones[vec.Bone].NormalMat3
-					temp := mat3.Mul3x1(vec.Offset.Vec3(1)).Vec2()
+				for _, vec := range attachment.CurrWeightVertices[i] {
+					bone := g.Skel.Bones[vec.Bone]
+					temp := bone.Mat2.Mul2x1(vec.Offset).Add(bone.WorldPos)
 					res = res.Add(temp.Mul(vec.Weight))
 				}
 				vertices = append(vertices, NewVertex(res.X(), res.Y(), uv.X()*w, uv.Y()*h))
 			}
 		} else {
-			mat3 := g.Skel.Bones[slot.Bone].NormalMat3
+			bone := g.Skel.Bones[slot.Bone]
 			for i, uv := range attachment.UVs {
-				vec := mat3.Mul3x1(attachment.CurrVertices[i].Vec3(1)).Vec2()
+				vec := bone.Mat2.Mul2x1(attachment.CurrVertices[i]).Add(bone.WorldPos)
 				vertices = append(vertices, NewVertex(vec.X(), vec.Y(), uv.X()*w, uv.Y()*h))
 			}
 		}
@@ -225,22 +314,22 @@ func (g *Game) drawSlot(slot *Slot, screen *ebiten.Image) {
 			for _, wv := range attachment.CurrWeightVertices {
 				res := mgl32.Vec2{}
 				for _, vec := range wv {
-					mat3 := g.Skel.Bones[vec.Bone].NormalMat3
-					temp := mat3.Mul3x1(vec.Offset.Vec3(1)).Vec2()
+					bone := g.Skel.Bones[vec.Bone]
+					temp := bone.Mat2.Mul2x1(vec.Offset).Add(bone.WorldPos)
 					res = res.Add(temp.Mul(vec.Weight))
 				}
 				vertices = append(vertices, NewVertex(res.X(), res.Y(), 0, 0))
 			}
 		} else {
-			mat3 := g.Skel.Bones[slot.Bone].NormalMat3
+			bone := g.Skel.Bones[slot.Bone]
 			for _, vertex := range attachment.CurrVertices {
-				vec := mat3.Mul3x1(vertex.Vec3(1)).Vec2()
+				vec := bone.Mat2.Mul2x1(vertex).Add(bone.WorldPos)
 				vertices = append(vertices, NewVertex(vec.X(), vec.Y(), 0, 0))
 			}
 		}
 		for i := 2; i < len(vertices); i++ {
 			indices = append(indices, 0, uint16(i-1), uint16(i))
-		}
+		} // 蒙版展示没有生效
 	} else {
 		panic("unknown attachment type")
 	}
@@ -310,6 +399,22 @@ func rotate90(img *image.RGBA) *image.RGBA {
 	return res
 }
 
+// rotate180 对图像进行180度旋转，返回旋转后的图像
+func rotate180(src image.Image) image.Image {
+	// 获取原始图像的尺寸
+	bound := src.Bounds()
+	width, height := bound.Dx(), bound.Dy()
+	// 创建目标图像（RGBA格式，支持读写像素）
+	dst := image.NewRGBA(bound)
+	// 遍历原始图像的每个像素
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			dst.Set(width-1-x, height-1-y, src.At(x, y))
+		}
+	}
+	return dst
+}
+
 func rotate270(img *image.RGBA) *image.RGBA {
 	// 獲取原始圖片的邊界
 	bound := img.Bounds()
@@ -343,12 +448,18 @@ func (g *Game) createImage(path string) *ebiten.Image {
 			res := image.NewRGBA(image.Rect(0, 0, item.OrigW, item.OrigH))
 			draw.Draw(res, image.Rect(item.OrigX, item.OrigY, item.OrigX+item.W, item.OrigY+item.H),
 				g.Image, image.Pt(item.X, item.Y), draw.Over)
-			if item.Rotate == 90 {
-				res = rotate90(res)
-			} else if item.Rotate == 270 {
-				res = rotate270(res)
+			switch item.Rotate {
+			case 0:
+				return ebiten.NewImageFromImage(res)
+			case 90:
+				return ebiten.NewImageFromImage(rotate90(res))
+			case 180:
+				return ebiten.NewImageFromImage(rotate180(res))
+			case 270:
+				return ebiten.NewImageFromImage(rotate270(res))
+			default:
+				panic(fmt.Sprintf("unknown rotate %d", item.Rotate))
 			}
-			return ebiten.NewImageFromImage(res)
 		}
 	}
 	panic(fmt.Sprintf("image %s not found", path))
@@ -361,4 +472,12 @@ func (g *Game) loadImage() image.Image {
 	HandleErr(err)
 	file.Close()
 	return img
+}
+
+func (g *Game) fillPathAttachment() {
+	for _, item := range g.Skel.PathConstraints {
+		slot := g.Skel.Slots[item.Target]
+		item.Attachment = g.Attachments[AttachmentKey(slot.Attachment, slot.Index)].Attachment
+		item.Bone = slot.Bone
+	}
 }
