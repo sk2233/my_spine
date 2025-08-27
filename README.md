@@ -8,4 +8,17 @@ https://github.com/isHarryh/Ark-Models
 [atlas.md](atlas.md)<br>
 [skel.md](skel.md)
 ### 效果
+#### 小图
 https://github.com/user-attachments/assets/e15eb671-0a60-425c-886a-24dda3fd751b
+
+
+Uploading 录制于 2025-08-28 00.25.03.mp4…
+
+
+
+
+
+https://github.com/user-attachments/assets/c3ecba67-08d3-4a0c-88e5-d8f805e7cd72
+
+
+#### 立绘
